@@ -58,7 +58,7 @@ export function ToastRegion({
     const oldest = toasts[0];
     const timer = setTimeout(() => {
       onDismiss(oldest.id);
-    }, 4500);
+    }, 3200);
     return () => clearTimeout(timer);
   }, [paused, suppressed, toasts, onDismiss]);
 
@@ -82,7 +82,7 @@ export function ToastRegion({
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
-      className="pointer-events-none fixed right-4 bottom-4 z-50 flex w-full max-w-sm flex-col gap-2"
+      className="pointer-events-none fixed bottom-4 left-4 z-50 flex w-full max-w-sm flex-col gap-2"
     >
       <AnimatePresence initial={false}>
         {toasts.map((toast) => (

@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import {
   Activity,
+  ArrowLeft,
   Code2,
   GitMerge,
   Layers,
@@ -24,6 +25,7 @@ interface TopNavbarProps {
   isXRayOpen: boolean;
   onToggleXRay: () => void;
   onResetDemo: () => void;
+  onReturnToLanding: () => void;
 }
 
 export function TopNavbar({
@@ -39,6 +41,7 @@ export function TopNavbar({
   isXRayOpen,
   onToggleXRay,
   onResetDemo,
+  onReturnToLanding,
 }: TopNavbarProps) {
   const sliderId = useId();
   const sliderProgress = `${((confidenceThreshold - 50) / (95 - 50)) * 100}%`;
@@ -52,28 +55,28 @@ export function TopNavbar({
   }> = [
     {
       id: 'collect',
-      label: '1. Collect & Unify',
-      badge: `${unmergedCount}`,
+      label: '1. Identity Resolution',
+      badge: `${unmergedCount} queue`,
       icon: Layers,
       badgeAccent: unmergedCount > 0,
     },
     {
       id: 'profiles',
-      label: '2. Unified Profiles',
+      label: '2. Customer 360',
       badge: `${stitchedCount}/${totalProfiles}`,
       icon: Users,
       badgeAccent: false,
     },
     {
       id: 'segment',
-      label: '3. AI Segmentation',
-      badge: 'Activate',
+      label: '3. Customer Studio',
+      badge: 'AI Studio',
       icon: Sparkles,
       badgeAccent: false,
     },
     {
       id: 'analytics',
-      label: '4. Campaign & Loop',
+      label: '4. Loop Analytics',
       badge: `${campaignCount}`,
       icon: Activity,
       badgeAccent: campaignCount > 0,
@@ -81,40 +84,57 @@ export function TopNavbar({
   ];
 
   return (
-    <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/85 backdrop-blur-md">
+    <header className="sticky top-0 z-30 border-b border-border-subtle bg-surface">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-center justify-between gap-4 py-3">
-          {/* Brand Logo */}
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-slate text-white">
-              <GitMerge
-                className="h-4 w-4 text-brand-amber"
-                aria-hidden="true"
-              />
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span
-                translate="no"
-                className="text-sm font-bold tracking-tight text-ink-primary"
-              >
-                Mini CDP
-              </span>
-              <span className="hidden text-xs text-ink-secondary sm:inline">
-                Computing Dept Demo
-              </span>
+        <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+          {/* Brand Logo & Overview Return */}
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+            <motion.button
+              type="button"
+              whileTap={{ scale: 0.985 }}
+              onClick={onReturnToLanding}
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-border-subtle bg-canvas px-2.5 py-1 text-xs font-medium text-ink-secondary transition-colors hover:border-zinc-300 hover:bg-zinc-100 hover:text-ink-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Overview</span>
+            </motion.button>
+
+            <span
+              className="hidden h-4 w-px bg-border-subtle sm:inline-block"
+              aria-hidden="true"
+            />
+
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-slate text-white">
+                <GitMerge
+                  className="h-4 w-4 text-brand-amber"
+                  aria-hidden="true"
+                />
+              </div>
+              <div className="flex flex-wrap items-baseline gap-2">
+                <span
+                  translate="no"
+                  className="text-sm font-bold tracking-tight text-ink-primary"
+                >
+                  Mini CDP
+                </span>
+                <span className="hidden rounded-full border border-amber-300 bg-brand-amber-soft px-2 py-0.5 text-[11px] font-semibold text-amber-900 sm:inline-flex">
+                  Composable Edition
+                </span>
+              </div>
             </div>
           </div>
 
           {/* Governance Controls + X-Ray + Reset */}
-          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-            <div className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-3 py-1.5">
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+            <div className="flex items-center gap-2.5 rounded-lg border border-border-subtle bg-canvas px-3 py-1.5">
               <label
                 htmlFor={sliderId}
                 className="text-xs font-medium text-ink-secondary"
               >
-                Confidence Threshold
+                Confidence Gate
               </label>
-              <div className="w-24 sm:w-28">
+              <div className="w-20 sm:w-28">
                 <input
                   id={sliderId}
                   name="confidenceThreshold"
@@ -123,7 +143,6 @@ export function TopNavbar({
                   max={95}
                   step={1}
                   value={confidenceThreshold}
-                  aria-label="Confidence Threshold"
                   aria-valuetext={`${confidenceThreshold}%`}
                   onChange={(event) =>
                     onThresholdChange(Number(event.target.value))
@@ -161,19 +180,15 @@ export function TopNavbar({
                 aria-hidden="true"
               />
               <span>X-Ray Mode</span>
-              <span
-                aria-hidden="true"
-                className={`inline-block h-2 w-2 rounded-full ${
-                  isXRayOpen ? 'bg-brand-amber-hover' : 'bg-amber-400'
-                }`}
-              />
+              <span className="font-data text-[10px] uppercase tracking-wider opacity-85">
+                {isXRayOpen ? 'ON' : 'OFF'}
+              </span>
             </motion.button>
 
             <motion.button
               type="button"
               whileTap={{ scale: 0.985 }}
               onClick={onResetDemo}
-              aria-label="Reset demo workspace"
               className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-border-subtle bg-surface px-2.5 py-1 text-xs font-medium text-ink-secondary transition-colors hover:bg-zinc-100 hover:text-ink-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50"
             >
               <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
@@ -182,7 +197,7 @@ export function TopNavbar({
           </div>
         </div>
 
-        {/* 4 Workflow Tabs */}
+        {/* 4 Workflow Stages */}
         <nav
           aria-label="CDP Workflow Stages"
           className="-mb-px flex items-center gap-1 overflow-x-auto"
@@ -198,7 +213,7 @@ export function TopNavbar({
                 onClick={() => onTabChange(tab.id)}
                 className={`relative inline-flex min-h-10 shrink-0 items-center gap-2 px-3.5 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 sm:text-sm ${
                   isActive
-                    ? 'text-ink-primary'
+                    ? 'font-semibold text-ink-primary'
                     : 'text-ink-secondary hover:text-ink-primary'
                 }`}
               >

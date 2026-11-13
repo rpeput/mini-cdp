@@ -71,7 +71,7 @@ export function App() {
     (tone: ToastItem['tone'], title: string, detail?: string) => {
       toastCounter += 1;
       const id = `toast_${Date.now()}_${toastCounter}`;
-      setToasts((prev) => [...prev.slice(-2), { id, tone, title, detail }]);
+      setToasts((prev) => [...prev.slice(-1), { id, tone, title, detail }]);
     },
     [],
   );
@@ -84,15 +84,18 @@ export function App() {
     setPipelineLogs((prev) => [...logs, ...prev].slice(0, 60));
   }, []);
 
-  const handleLogin = (openXRay: boolean) => {
+  const handleLogin = (openXRay: boolean, initialTab?: WorkflowTabId) => {
     setIsLoggedIn(true);
     setIsXRayOpen(openXRay);
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
     pushToast(
       'info',
       openXRay
         ? 'Entered AI Lead X-Ray Workspace'
-        : 'Signed into Mini CDP Workspace',
-      'Loaded 15 Computing Dept profiles and 45 multi-source signals.',
+        : 'Entered Mini CDP Customer Studio',
+      'Loaded 15 profiles, 45 multi-source signals, and live governance controls.',
     );
   };
 
@@ -345,6 +348,7 @@ export function App() {
             isXRayOpen={isXRayOpen}
             onToggleXRay={() => setIsXRayOpen((prev) => !prev)}
             onResetDemo={handleResetDemo}
+            onReturnToLanding={() => setIsLoggedIn(false)}
           />
 
           <main

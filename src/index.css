@@ -36,6 +36,12 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
   @media (pointer: fine) {
     html {
       overscroll-behavior: none;
@@ -194,13 +200,8 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-      animation-duration: 0.01ms !important;
-      animation-iteration-count: 1 !important;
-      transition-duration: 0.01ms !important;
-      scroll-behavior: auto !important;
+    html {
+      scroll-behavior: auto;
     }
   }
 
@@ -210,6 +211,11 @@
       outline-offset: 2px;
     }
   }
+}
+
+@utility cdp-grid-backdrop {
+  background-image: radial-gradient(circle, #e4e4e7 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 
 @utility font-ui {
