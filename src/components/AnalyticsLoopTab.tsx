@@ -1,4 +1,4 @@
-import { ArrowRight, Clock3, MessageSquare, Send, ThumbsDown, ThumbsUp, UserCheck } from 'lucide-react';
+import { ArrowRight, ChevronDown, Clock3, MessageSquare, Send, ThumbsDown, ThumbsUp, UserCheck } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import { useReplyPlayback } from '../hooks/useReplyPlayback.ts';
@@ -7,6 +7,7 @@ import type { PastedReply } from '../utils/aiActions.ts';
 import { CampaignInsights } from './CampaignInsights.tsx';
 import { ReplyReader } from './ReplyReader.tsx';
 import { summarizeCampaign } from '../utils/campaignFlow.ts';
+import { formatCampaignDate } from '../utils/cdpHelpers.ts';
 import { playableReplyIds, staggerDelay, visibleReplies } from '../utils/motionSequence.ts';
 import { AnimatedNumber } from './MotionBits.tsx';
 
@@ -29,7 +30,6 @@ interface AnalyticsLoopTabProps {
   playbackCampaignId: string | null;
 }
 
-const dateFormat = new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
 const statuses = {
   accepted: { label: 'ตอบรับ', className: 'chip-positive' },
   declined: { label: 'ปฏิเสธ', className: 'chip-negative' },
@@ -69,16 +69,25 @@ export function AnalyticsLoopTab({ campaigns, activeCampaignId, onSelectCampaign
       {campaign ? (
         <>
           <div className="surface table-toolbar analytics-toolbar">
-            <div><h2>{campaign.name}</h2><p>ส่งจำลองผ่าน LINE · {dateFormat.format(new Date(campaign.createdAt))}</p></div>
-            <label className="field">เลือกแคมเปญ<select value={campaign.id} onChange={(event) => onSelectCampaign(event.target.value)}>
-              {campaigns.map((item) => <option value={item.id} key={item.id}>{item.name} · {dateFormat.format(new Date(item.createdAt))}</option>)}
-            </select></label>
+            <div><h2>{campaign.name}</h2><p>ส่งจำลองผ่าน LINE · {formatCampaignDate(campaign.createdAt)}</p></div>
+            <label className="field">
+              เลือกแคมเปญ
+              <span className="campaign-picker">
+                <select value={campaign.id} onChange={(event) => onSelectCampaign(event.target.value)}>
+                  {campaigns.map((item) => <option value={item.id} key={item.id}>{item.name} · {formatCampaignDate(item.createdAt)}</option>)}
+                </select>
+                <span className="campaign-picker-value" aria-hidden="true">
+                  <span>{campaign.name} · {formatCampaignDate(campaign.createdAt)}</span>
+                  <ChevronDown size={16} />
+                </span>
+              </span>
+            </label>
           </div>
           <dl className="metric-grid metric-grid-four">
             <div className="metric"><dt><Send size={17} aria-hidden="true" /> ส่งแล้ว</dt><dd><AnimatedNumber value={recipients.length} from={playLaunch ? 0 : undefined} /></dd></div>
-            <div className="metric"><dt><ThumbsUp size={17} aria-hidden="true" /> ตอบรับ</dt><dd><AnimatedNumber value={accepted} duration={0.22} /></dd></div>
-            <div className="metric"><dt><ThumbsDown size={17} aria-hidden="true" /> ปฏิเสธ</dt><dd><AnimatedNumber value={declined} duration={0.22} /></dd></div>
-            <div className="metric"><dt><Clock3 size={17} aria-hidden="true" /> ยังไม่ตอบ</dt><dd><AnimatedNumber value={pending} from={playLaunch ? 0 : undefined} duration={0.22} /></dd></div>
+            <div className="metric"><dt><ThumbsUp size={17} aria-hidden="true" /> ตอบรับ</dt><dd><AnimatedNumber value={accepted} duration={0.29} /></dd></div>
+            <div className="metric"><dt><ThumbsDown size={17} aria-hidden="true" /> ปฏิเสธ</dt><dd><AnimatedNumber value={declined} duration={0.29} /></dd></div>
+            <div className="metric"><dt><Clock3 size={17} aria-hidden="true" /> ยังไม่ตอบ</dt><dd><AnimatedNumber value={pending} from={playLaunch ? 0 : undefined} duration={0.29} /></dd></div>
           </dl>
           <div className="surface panel response-panel">
             <div className="response-heading">
@@ -90,7 +99,7 @@ export function AnalyticsLoopTab({ campaigns, activeCampaignId, onSelectCampaign
             </div>
             <div className="response-bar" aria-hidden="true">
               {[{ key: 'accepted', count: accepted }, { key: 'declined', count: declined }, { key: 'pending', count: pending }].filter((item) => item.count).map(({ key, count }) => (
-                <motion.span layout key={key} className={`response-${key}`} style={{ flexGrow: count }} transition={{ duration: 0.28 }} />
+                <motion.span layout key={key} className={`response-${key}`} style={{ flexGrow: count }} transition={{ duration: 0.37 }} />
               ))}
             </div>
             <ul className="response-list">{recipients.map((match, index) => {
@@ -101,7 +110,7 @@ export function AnalyticsLoopTab({ campaigns, activeCampaignId, onSelectCampaign
               const typing = playback?.typing.includes(match.profileId) ?? false;
               return (
                 <motion.li key={match.profileId} layout="position" initial={playLaunch ? { opacity: 0, y: 6 } : false} animate={{ opacity: 1, y: 0 }}
-                  transition={{ default: { duration: 0.2, delay: playLaunch ? staggerDelay(index, 50, 10) / 1000 : 0, ease: 'easeOut' }, layout: { duration: 0.22, ease: 'easeOut' } }}>
+                  transition={{ default: { duration: 0.27, delay: playLaunch ? staggerDelay(index, 67, 10) / 1000 : 0, ease: 'easeOut' }, layout: { duration: 0.29, ease: 'easeOut' } }}>
                   <div className="response-person">
                     <button className="profile-link" onClick={() => onInspectProfile(match.profileId)}>
                       <span className="person-avatar" aria-hidden="true">{profile?.avatarInitials}</span>
@@ -111,16 +120,16 @@ export function AnalyticsLoopTab({ campaigns, activeCampaignId, onSelectCampaign
                     <span className="chip-list">{reply?.origin === 'pasted' && <span className="chip">คำตอบจริง</span>}
                       {typing
                         ? <span className="chip chip-typing" data-typing>กำลังพิมพ์<TypingDots /></span>
-                        : <motion.span key={reply?.status ?? 'pending'} className={`chip ${status.className}`} initial={playing && reply ? { opacity: 0, scale: 0.9 } : false} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.2, ease: 'easeOut' }}>{status.label}</motion.span>}</span>
+                        : <motion.span key={reply?.status ?? 'pending'} className={`chip ${status.className}`} initial={playing && reply ? { opacity: 0, scale: 0.9 } : false} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.27, ease: 'easeOut' }}>{status.label}</motion.span>}</span>
                   </div>
                   <details className="response-message"><summary>คำเชิญที่ส่ง <span className="sr-only">ถึง {profile?.nickname}</span></summary><p>{match.personalizedInvite}</p></details>
-                  {reply?.replyText && <motion.p className="reply-text" initial={playing ? { opacity: 0 } : false} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>“{reply.replyText}”</motion.p>}
+                  {reply?.replyText && <motion.p className="reply-text" initial={playing ? { opacity: 0 } : false} animate={{ opacity: 1 }} transition={{ duration: 0.27 }}>“{reply.replyText}”</motion.p>}
                   {reply?.note && <p className="reply-note">เงื่อนไข: {reply.note}</p>}
                   {reply?.feedbackTag && <span className="chip">{reply.feedbackTag}</span>}
                   {saved && saved.status !== 'pending' && (
                     // Reserved for every reply that is saved to a profile, so the chip arriving does not push the next row.
                     <div className="loop-slot">
-                      {reply && <motion.span className="chip chip-loop" initial={playing ? { opacity: 0, y: 4 } : false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, delay: 0.1, ease: 'easeOut' }}>
+                      {reply && <motion.span className="chip chip-loop" initial={playing ? { opacity: 0, y: 4 } : false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.27, delay: 0.13, ease: 'easeOut' }}>
                         <UserCheck size={13} aria-hidden="true" /> บันทึกเข้าโปรไฟล์ของ {profile?.nickname ?? match.profileId}
                       </motion.span>}
                     </div>
@@ -144,7 +153,7 @@ function TypingDots() {
   return (
     <span className="typing-dots" aria-hidden="true">
       {[0, 1, 2].map((dot) => (
-        <motion.span key={dot} animate={{ opacity: [0.25, 1, 0.25] }} transition={{ duration: 0.8, repeat: Infinity, delay: dot * 0.15 }} />
+        <motion.span key={dot} animate={{ opacity: [0.25, 1, 0.25] }} transition={{ duration: 1.07, repeat: Infinity, delay: dot * 0.2 }} />
       ))}
     </span>
   );

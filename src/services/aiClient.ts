@@ -2,6 +2,7 @@ import type { AiAction, AiProxyResponse } from '../types/cdp.ts';
 import { estimateTokens, markAiInvalid, type AiOutcome, recordAiCall } from './aiMetrics.ts';
 
 export const AI_PROXY_TIMEOUT_MS = 18_000;
+let sessionId: string | undefined;
 
 export interface AiRawResult {
   data: unknown;
@@ -30,7 +31,10 @@ export async function callAiRaw(action: AiAction, payload: unknown, timeoutMs = 
   try {
     const response = await fetch('/api/ai', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-gather-ai-session': sessionId ??= crypto.randomUUID(),
+      },
       body,
       signal: controller.signal,
     });

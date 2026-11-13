@@ -167,7 +167,7 @@ export function ReviewQueue({ profiles, confidenceThreshold, manuallyApprovedIds
                         <strong><Highlight text={row.profile.nickname} query={state.query} /></strong>
                         <span className="chip">{CATEGORY_LABEL_TH[row.attribute.category]}: <Highlight text={row.attribute.value} query={state.query} /></span>
                         <span className="chip chip-waiting">มั่นใจ {row.attribute.confidence}%</span>
-                        <span className="chip chip-neutral" lang="en">{SOURCE_META[row.attribute.source].shortLabel}</span>
+                        <span className="chip chip-neutral" data-source={row.attribute.source} lang="en">{SOURCE_META[row.attribute.source].shortLabel}</span>
                       </div>
                       <blockquote><Highlight text={row.attribute.evidenceQuote} query={state.query} /></blockquote>
                       <button type="button" className="text-button" onClick={() => onInspectProfile(row.profile.id)}>ดูโปรไฟล์ {row.profile.nickname}</button>

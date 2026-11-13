@@ -1,5 +1,5 @@
 import { animate, useReducedMotion } from 'motion/react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
  * Counts from 0 to the value once, over 300ms, when `start` first becomes true. Reduced motion shows
@@ -9,10 +9,8 @@ export function CountUp({ value, start = true }: { value: number; start?: boolea
   const reduced = useReducedMotion();
   const [shown, setShown] = useState(0);
   const [done, setDone] = useState(false);
-  const played = useRef(false);
   useEffect(() => {
-    if (reduced || !start || played.current) return;
-    played.current = true;
+    if (reduced || !start || done) return;
     const controls = animate(0, value, {
       duration: 0.3,
       ease: 'easeOut',
@@ -20,6 +18,6 @@ export function CountUp({ value, start = true }: { value: number; start?: boolea
       onComplete: () => setDone(true),
     });
     return () => controls.stop();
-  }, [value, reduced, start]);
+  }, [value, reduced, start, done]);
   return <span aria-label={String(value)}>{reduced || done ? value : shown}</span>;
 }

@@ -163,7 +163,7 @@ export function UnifiedProfilesTab({ profiles, confidenceThreshold, manuallyAppr
                   <td>{traits.length || fresh.length ? <div className="chip-list">{traits.map((trait) => <span key={trait.id} className="chip"><Highlight text={trait.value} query={state.query} /></span>)}{verifiedTraits.length > 2 && <span className="muted">+{verifiedTraits.length - 2}</span>}
                     {fresh.length > 0 && (
                       <motion.span className="chip chip-fresh" initial={playFresh ? { opacity: 0, scale: 0.9 } : false} animate={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.2, delay: playFresh ? staggerDelay(rowIndex) / 1000 : 0, ease: 'easeOut' }}>
+                    transition={{ duration: 0.27, delay: playFresh ? staggerDelay(rowIndex) / 1000 : 0, ease: 'easeOut' }}>
                         ใหม่ · {fresh.slice(0, 2).join(', ')}{fresh.length > 2 ? ` +${fresh.length - 2}` : ''}
                       </motion.span>
                     )}</div> : <span className="muted">—</span>}</td>

@@ -4,7 +4,7 @@ import { CountUp } from './CountUp.tsx';
 import type { CampaignRecord, RawSourceRecord, UnifiedProfile, UnlinkedRecord, WorkflowTabId } from '../types/cdp.ts';
 import { summarizeCampaign } from '../utils/campaignFlow.ts';
 import { buildFunnel, buildNextActions, countVerifiedInterests, type NextAction } from '../utils/overview.ts';
-import { formatDateShort } from '../utils/cdpHelpers.ts';
+import { formatCampaignDate } from '../utils/cdpHelpers.ts';
 
 interface OverviewTabProps {
   profiles: UnifiedProfile[];
@@ -96,7 +96,7 @@ export function OverviewTab({ profiles, records, campaigns, inbox, confidenceThr
           <h2 id="latest-title">ผลแคมเปญล่าสุด</h2>
           {latest ? (
             <>
-              <p>{latest.name} · ส่งเมื่อ {formatDateShort(latest.createdAt)}</p>
+              <p>{latest.name} · ส่งเมื่อ {formatCampaignDate(latest.createdAt)}</p>
               <dl className="metric-grid metric-grid-four overview-metrics">
                 <div className="metric"><dt>ส่ง</dt><dd><CountUp value={totals.sent} /></dd></div>
                 <div className="metric"><dt>ตอบรับ</dt><dd><CountUp value={totals.accepted} /></dd></div>

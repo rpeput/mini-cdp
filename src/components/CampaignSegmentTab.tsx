@@ -116,14 +116,14 @@ export function CampaignSegmentTab({ profiles, records, confidenceThreshold, man
                 if (!profile) return null;
                 return (
                   <motion.li key={match.profileId} layout="position" initial={playIn ? { opacity: 0, y: 6 } : false} animate={{ opacity: 1, y: 0 }}
-                    transition={{ default: { duration: 0.2, delay: playIn ? staggerDelay(index) / 1000 : 0, ease: 'easeOut' }, layout: { duration: 0.22, ease: 'easeOut' } }}>
+                    transition={{ default: { duration: 0.27, delay: playIn ? staggerDelay(index) / 1000 : 0, ease: 'easeOut' }, layout: { duration: 0.29, ease: 'easeOut' } }}>
                     <div className="match-heading">
                       <label className="recipient-choice">
                         <input type="checkbox" checked={match.selected} disabled={busy} onChange={(event) => updateMatch(match.profileId, { selected: event.target.checked })} />
                         <span className="person-avatar" aria-hidden="true">{profile.avatarInitials}</span>
                         <span><strong>{profile.nickname}</strong><small>{profile.fullName}</small></span>
                       </label>
-                      <div className="chip-list"><span className={`chip ${match.tier === 'direct' ? 'chip-positive' : ''}`}>{match.tier === 'direct' ? 'ตรงความสนใจ' : 'ความสนใจใกล้เคียง'}</span><ScoreMeter score={match.matchScore} animateIn={playIn} delay={playIn ? staggerDelay(index) / 1000 + 0.05 : 0} /></div>
+                      <div className="chip-list"><span className={`chip ${match.tier === 'direct' ? 'chip-positive' : ''}`}>{match.tier === 'direct' ? 'ตรงความสนใจ' : 'ความสนใจใกล้เคียง'}</span><ScoreMeter score={match.matchScore} animateIn={playIn} delay={playIn ? staggerDelay(index) / 1000 + 0.07 : 0} /></div>
                     </div>
                     <p>{match.aiReasoning}</p>
                     <button type="button" className="text-button" aria-haspopup="dialog" onClick={() => setWhyProfileId(match.profileId)}><Quote size={15} aria-hidden="true" /> ทำไมแนะนำคนนี้ <span className="sr-only">ของ {profile.nickname}</span></button>

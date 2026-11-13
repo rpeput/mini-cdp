@@ -31,7 +31,7 @@ export function ProfileInspectorDrawer({ profile, records, onClose, confidenceTh
                   <li key={attribute.id}>
                     <div className="evidence-heading"><strong>{attribute.value}</strong><span className={`chip ${status === 'verified' ? 'chip-positive' : status === 'rejected' ? 'chip-negative' : 'chip-waiting'}`}>{statusLabels[status]}</span></div>
                     <blockquote><Quote size={15} aria-hidden="true" /> {attribute.evidenceQuote}</blockquote>
-                    <small>{SOURCE_META[attribute.source].label} · ความมั่นใจ {attribute.confidence}%</small>
+                    <small><span data-source={attribute.source} lang="en">{SOURCE_META[attribute.source].label}</span> · ความมั่นใจ {attribute.confidence}%</small>
                     {status !== 'rejected' && <div className="evidence-actions">
                       {status === 'needs_review' && <button className="button button-light" disabled={busy} onClick={() => onAttributeDecision(profile.id, attribute.id, 'verified')}><Check size={16} aria-hidden="true" /> ยืนยัน <span className="sr-only">{attribute.value}</span></button>}
                       <button className="button button-light" disabled={busy} onClick={() => onAttributeDecision(profile.id, attribute.id, 'rejected')}><X size={16} aria-hidden="true" /> ปฏิเสธ <span className="sr-only">{attribute.value}</span></button>
@@ -44,7 +44,7 @@ export function ProfileInspectorDrawer({ profile, records, onClose, confidenceTh
           <section aria-labelledby="profile-sources">
             <h3 id="profile-sources">ข้อความต้นทาง</h3>
             <ul className="evidence-list">{records.filter((record) => record.linkedProfileId === profile.id).map((record) => (
-              <li key={record.id}><span className="chip" lang="en">{SOURCE_META[record.source].label}</span><p>{record.rawText}</p></li>
+              <li key={record.id}><span className="chip" data-source={record.source} lang="en">{SOURCE_META[record.source].label}</span><p>{record.rawText}</p></li>
             ))}</ul>
           </section>
           <section aria-labelledby="profile-campaigns">

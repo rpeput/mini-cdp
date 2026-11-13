@@ -1,7 +1,4 @@
 import { extractRuleSignals } from '../services/aiEngine.ts';
-import { readSignalsWithRules, SIGNAL_TAXONOMY } from '../services/ai/signals.ts';
-import { buildDemoNumbers } from '../utils/demoNumbers.ts';
-import { SIGNAL_CASES } from './aiFixtures.ts';
 import { CAMPAIGN_PRESETS, INITIAL_PROFILES, RAW_SOURCE_RECORDS } from './seedData.ts';
 
 const message = RAW_SOURCE_RECORDS.find((record) => record.id === 'raw_02_line');
@@ -32,13 +29,12 @@ export const LANDING_DEMO = {
  */
 export const LANDING_OUTCOME = { sent: 9, accepted: 6, declined: 1, pending: 2 };
 
-export const LANDING_NUMBERS = buildDemoNumbers(RAW_SOURCE_RECORDS, INITIAL_PROFILES, LANDING_OUTCOME);
 
 /** Scenarios offered by the closing call to action. The last one is meant to find nobody. */
 export const LANDING_SCENARIOS = [
-  { id: 'mookata', label: 'ชวนกินหมูกระทะ', hint: `พบผู้รับ ${LANDING_OUTCOME.sent} คน`, prompt: CAMPAIGN_PRESETS[0] },
-  { id: 'hiking', label: 'หาตี้เดินป่า', hint: 'ดูผู้รับที่ตรงและใกล้เคียง', prompt: CAMPAIGN_PRESETS[1] },
-  { id: 'none', label: 'ชวนไปเล่นสกี', hint: 'ไม่พบผู้รับ แอปบอกตรง ๆ', prompt: 'ชวนไปเล่นสกีที่ญี่ปุ่น' },
+  { id: 'mookata', label: 'ชวนกินหมูกระทะ', prompt: CAMPAIGN_PRESETS[0] },
+  { id: 'hiking', label: 'หาตี้เดินป่า', prompt: CAMPAIGN_PRESETS[1] },
+  { id: 'none', label: 'ชวนไปเล่นสกี', prompt: 'ชวนไปเล่นสกีที่ญี่ปุ่น' },
 ] as const;
 
 /** Recommended recipients shown in the story. The term is what the quote is matched on. */
@@ -60,17 +56,3 @@ const notConsented = INITIAL_PROFILES.find((item) => !item.consentPdpa);
 const excludedRecord = RAW_SOURCE_RECORDS.find((item) => item.linkedProfileId === notConsented?.id && extractRuleSignals(item.rawText).length > 0);
 if (!notConsented || !excludedRecord) throw new Error('Gather landing excluded friend is missing');
 export const LANDING_EXCLUDED = { profile: notConsented, record: excludedRecord, interest: extractRuleSignals(excludedRecord.rawText)[0].value };
-
-/** Messages the keyword rules misread. The rule result is computed here; the correct answer is the fixture's written answer. */
-const labelOf = (id: string) => SIGNAL_TAXONOMY.find((item) => item.id === id)?.label ?? id;
-export const LANDING_MISREADS = ['fx_sg_1', 'fx_sg_2', 'fx_sg_5'].map((id) => {
-  const item = SIGNAL_CASES.find((fixture) => fixture.id === id);
-  if (!item) throw new Error(`Gather landing fixture ${id} is missing`);
-  return {
-    id,
-    text: item.text,
-    rules: readSignalsWithRules(item.text).map((signal) => `ชอบ ${labelOf(signal.id)}`),
-    answer: [...item.gold.likes.map((x) => `ชอบ ${labelOf(x)}`), ...item.gold.dislikes.map((x) => `ไม่ชอบ ${labelOf(x)}`)],
-    note: item.note,
-  };
-});

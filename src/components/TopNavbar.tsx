@@ -65,14 +65,10 @@ export function TopNavbar({ activeTab, onTabChange, onToggleXRay, onResetDemo, o
             <X size={22} aria-hidden="true" />
           </button>
         </div>
-        <div className="workspace-identity">
-          <span className="workspace-avatar" aria-hidden="true">G</span>
-          <span><strong>ชมรมเพื่อนภาควิชา</strong><small>พื้นที่ทดลอง</small></span>
-        </div>
         <nav className="workspace-nav" aria-label="เมนูพื้นที่ทำงาน">
           {pages.map(({ id, label, icon: Icon }, index) => (
             <button key={id} ref={index === 0 ? firstItem : undefined} className="nav-item" aria-current={activeTab === id ? 'page' : undefined} onClick={run(() => onTabChange(id))}>
-              {activeTab === id && <motion.span layoutId={indicatorId} className="nav-indicator" aria-hidden="true" transition={{ duration: 0.2, ease: 'easeOut' }} />}
+              {activeTab === id && <motion.span layoutId={indicatorId} className="nav-indicator" aria-hidden="true" transition={{ duration: 0.27, ease: 'easeOut' }} />}
               <Icon size={18} aria-hidden="true" /> <span>{label}</span>
             </button>
           ))}

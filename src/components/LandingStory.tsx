@@ -90,7 +90,7 @@ const person = demo.profile;
 const lineRecord = demo.message;
 const fbRecord = demo.facebook.message;
 
-function StepPanel({ index, active }: { index: number; active: boolean }) {
+function StepPanel({ index, active }: { index: number; active?: boolean }) {
   if (index === 0) {
     return (
       <WorkspaceFrame active="collect" title="แหล่งข้อมูล">
@@ -121,7 +121,7 @@ function StepPanel({ index, active }: { index: number; active: boolean }) {
             <li key={attribute.id} data-focus={attribute.evidenceQuote === demo.evidence.evidenceQuote}>
               <div className="ws-row-top">
                 <span className="chip">{attribute.value}</span>
-                <span className="chip chip-positive">ยืนยันแล้ว · มั่นใจ {attribute.confidence}%</span>
+                <span className="chip chip-positive">มั่นใจ {attribute.confidence}%</span>
               </div>
               <p className="ws-quote">{attribute.evidenceQuote}</p>
             </li>
@@ -135,13 +135,13 @@ function StepPanel({ index, active }: { index: number; active: boolean }) {
       <WorkspaceFrame active="segment" title="สร้างแคมเปญ">
         <p className="ws-campaign"><span className="muted">กิจกรรมที่คุณพิมพ์</span><strong>{demo.campaign}</strong></p>
         <ul className="ws-list">
-          {LANDING_RECIPIENTS.map(({ profile, score, term, record }) => (
+          {LANDING_RECIPIENTS.map(({ profile, term, record }) => (
             <li key={profile.id}>
               <div className="ws-row-top">
                 <span className="ws-check" aria-hidden="true"><Check size={14} /></span>
                 <span className="preview-avatar" aria-hidden="true">{profile.nickname[0]}</span>
                 <strong>{profile.nickname}</strong>
-                <span className="chip chip-positive">ตรงกลุ่ม · {score}</span>
+                <span className="chip chip-positive">ตรงกลุ่ม</span>
               </div>
               <p className="ws-quote"><span className="muted">เหตุผล: </span><Marked text={record.rawText} term={term} /></p>
             </li>
@@ -168,7 +168,7 @@ const steps = [
   { title: 'เริ่มจากข้อความที่เพื่อนพิมพ์จริง', body: `ฟ้าใสพิมพ์ใน LINE ว่า “${demo.message.rawText}” ส่วนที่ไฮไลต์คือข้อความที่ Gather ใช้เป็นหลักฐาน` },
   { title: 'หลักฐานถูกเก็บในโปรไฟล์', body: `ข้อความเดียวกันกลายเป็นความสนใจ “${demo.evidence.value}” พร้อมข้อความอ้างอิง แหล่ง และความมั่นใจ ${demo.evidence.confidence}% ถ้าไม่มั่นใจพอ จะรอให้คุณตรวจก่อน` },
   { title: 'คุณเลือกผู้รับ โดยเห็นเหตุผล', body: 'พิมพ์กิจกรรมแล้ว Gather แนะนำเพื่อนที่น่าจะสนใจ พร้อมข้อความที่ใช้เป็นเหตุผลของแต่ละคน คุณเป็นคนเลือกว่าจะส่งถึงใคร และแสดงเฉพาะเพื่อนที่ยินยอมรับคำเชิญ' },
-  { title: 'คำตอบถูกเขียนกลับเข้าโปรไฟล์', body: `${person.nickname}ตอบรับ ยอดผลแคมเปญและประวัติในโปรไฟล์ของเธออัปเดตทันที ในเดโมนี้ส่ง ${LANDING_OUTCOME.sent} คน ตอบรับ ${LANDING_OUTCOME.accepted} คน (ข้อมูลสมมติ)` },
+  { title: 'คำตอบถูกเขียนกลับเข้าโปรไฟล์', body: `${person.nickname}ตอบรับ ยอดผลแคมเปญและประวัติในโปรไฟล์ของเธออัปเดตทันที` },
 ];
 
 function subscribeNarrow(callback: () => void) {
@@ -179,7 +179,7 @@ function subscribeNarrow(callback: () => void) {
 
 /**
  * One connected scene in four steps. On a wide screen the product UI stays put and changes with scroll
- * progress; on a narrow screen, or with reduced motion, it becomes four ordinary text-and-screen blocks.
+ * progress. On a narrow screen the panels enter as they scroll into view.
  */
 export function LandingStory() {
   const reducedMotion = useReducedMotion();
@@ -205,7 +205,15 @@ export function LandingStory() {
                 <p className="story-count">ขั้น {index + 1} จาก {steps.length}</p>
                 <h3>{item.title}</h3>
                 <p>{item.body}</p>
-                {linear && <div className="story-inline"><StepPanel index={index} active /></div>}
+                {linear && (
+                  <motion.div className="story-inline"
+                    initial={reducedMotion ? false : { opacity: 0.8, y: 22 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, amount: 0.2 }}
+                    transition={{ duration: reducedMotion ? 0 : 0.42, ease: 'easeOut' }}>
+                    <StepPanel index={index} />
+                  </motion.div>
+                )}
               </li>
             ))}
           </ol>

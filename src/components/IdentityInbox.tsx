@@ -62,7 +62,7 @@ export function IdentityInbox({ inbox, profiles, records, busy, onLoadSamples, o
             return (
               <li key={record.id}>
                 <div className="source-row-top">
-                  <span className="chip-list"><span className="chip" lang="en">{SOURCE_META[record.source].shortLabel}</span><strong lang="en">{record.handle}</strong></span>
+                  <span className="chip-list"><span className="chip" data-source={record.source} lang="en">{SOURCE_META[record.source].shortLabel}</span><strong lang="en">{record.handle}</strong></span>
                 </div>
                 <p>{record.rawText}</p>
                 {suggestion && (

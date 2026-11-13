@@ -22,10 +22,10 @@ async function simulatedCampaign(context) {
 }
 
 test('stagger delays grow per row, stop at the cap and never go negative', () => {
-  assert.deepEqual([0, 1, 2].map((rank) => staggerDelay(rank)), [0, 40, 80]);
-  assert.equal(staggerDelay(7), 280);
-  assert.equal(staggerDelay(8), 280);
-  assert.equal(staggerDelay(500), 280);
+  assert.deepEqual([0, 1, 2].map((rank) => staggerDelay(rank)), [0, 54, 108]);
+  assert.equal(staggerDelay(7), 378);
+  assert.equal(staggerDelay(8), 378);
+  assert.equal(staggerDelay(500), 378);
   assert.equal(staggerDelay(-3), 0);
   assert.ok(staggerDelay(20, 40, 8) <= 40 * 8, 'a long list is capped at roughly 300ms');
 });

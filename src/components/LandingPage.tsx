@@ -6,7 +6,7 @@ import lineIcon from '../assets/line-brand.png';
 import { LANDING_DEMO as demo } from '../data/landingDemo.ts';
 import { SOURCE_META } from '../utils/cdpHelpers.ts';
 import type { WorkflowTabId } from '../types/cdp.ts';
-import { LandingExcluded, LandingFinalCta, LandingNumbers, LandingWhy } from './LandingSections.tsx';
+import { LandingExcluded, LandingFinalCta } from './LandingSections.tsx';
 import { LandingStory, WorkspaceFrame } from './LandingStory.tsx';
 import './LandingPage.css';
 
@@ -131,9 +131,7 @@ export function LandingPage({ onEnterWorkspace }: LandingPageProps) {
           <motion.div className="hero-product" {...entrance} transition={{ ...entrance.transition, delay: reducedMotion ? 0 : 0.12 }}><SourcePreview /></motion.div>
         </section>
         <LandingStory />
-        <LandingNumbers />
         <LandingExcluded />
-        <LandingWhy />
         <LandingFinalCta onEnter={(prompt) => onEnterWorkspace('segment', prompt)} />
       </main>
       <footer><div className="landing-footer wrap"><span lang="en">gather.</span><span>ข้อมูลทั้งหมดในหน้านี้เป็นข้อมูลสมมติ</span></div></footer>

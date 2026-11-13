@@ -6,7 +6,7 @@ import type { CampaignRecord, CampaignReplySummary, RawSourceRecord, UnifiedProf
  * final numbers can be tested and a skipped or reduced-motion run reaches the same values.
  */
 
-export const STAGGER_STEP_MS = 40;
+export const STAGGER_STEP_MS = 54;
 export const STAGGER_CAP = 8;
 
 /** Delay for the row at `rank`. Rows past `cap` share the last delay so long lists never wait long. */
@@ -31,7 +31,7 @@ export interface PlaybackOptions {
   maxTotalMs: number;
 }
 
-export const DEFAULT_PLAYBACK: PlaybackOptions = { typingMs: 480, gapMs: 200, maxTotalMs: 2200 };
+export const DEFAULT_PLAYBACK: PlaybackOptions = { typingMs: 640, gapMs: 270, maxTotalMs: 2930 };
 
 export interface PlaybackState {
   typing: string[];

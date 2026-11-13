@@ -125,6 +125,13 @@ export function formatTimeShort(isoTimestamp: string): string {
   });
 }
 
+const campaignDateFormat = new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
+
+export function formatCampaignDate(isoTimestamp: string): string {
+  const date = new Date(isoTimestamp);
+  return Number.isNaN(date.getTime()) ? isoTimestamp : campaignDateFormat.format(date);
+}
+
 export function formatDateShort(isoTimestamp: string): string {
   const date = new Date(isoTimestamp);
   if (Number.isNaN(date.getTime())) {

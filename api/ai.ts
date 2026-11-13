@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { randomUUID } from 'node:crypto';
 import type { AiAction } from '../src/types/cdp.ts';
 
 const DEFAULT_BASE_URL = 'https://api.maxplus-ai.cc/auto-pools/v1';
@@ -320,6 +321,7 @@ async function callChatCompletions(params: {
   systemPrompt: string;
   userPrompt: string;
   temperature: number;
+  sessionHeaders?: Record<string, string>;
   timeoutMs: number;
 }): Promise<UpstreamCallResult> {
   const response = await fetch(`${params.baseUrl}/chat/completions`, {
@@ -327,6 +329,7 @@ async function callChatCompletions(params: {
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${params.apiKey}`,
+      ...params.sessionHeaders,
     },
     body: JSON.stringify({
       model: params.model,
@@ -358,6 +361,7 @@ async function callResponsesApi(params: {
   model: string;
   systemPrompt: string;
   userPrompt: string;
+  sessionHeaders?: Record<string, string>;
   timeoutMs: number;
 }): Promise<UpstreamCallResult> {
   const response = await fetch(`${params.baseUrl}/responses`, {
@@ -365,6 +369,7 @@ async function callResponsesApi(params: {
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${params.apiKey}`,
+      ...params.sessionHeaders,
     },
     body: JSON.stringify({
       model: params.model,
@@ -443,6 +448,15 @@ export default async function handler(
     DEFAULT_MODEL
   ).trim();
   const wireApiMode = resolveWireApiMode(process.env.LLM_WIRE_API);
+  const sessionId = req.headers['x-gather-ai-session'];
+  const sessionHeaders = baseUrl === 'https://opencode.ai/inference/go/openai/v1'
+    ? {
+        'User-Agent': 'Gather/1.0',
+        'x-opencode-session': typeof sessionId === 'string' && /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(sessionId)
+          ? sessionId
+          : randomUUID(),
+      }
+    : undefined;
 
   const { action, payload } = parsedBody;
   const systemPrompt = SYSTEM_PROMPTS[action];
@@ -460,6 +474,7 @@ export default async function handler(
         model,
         systemPrompt,
         userPrompt,
+        sessionHeaders,
         timeoutMs: Math.max(1_000, deadlineAt - Date.now()),
       });
     } else {
@@ -470,6 +485,7 @@ export default async function handler(
         systemPrompt,
         userPrompt,
         temperature,
+        sessionHeaders,
         timeoutMs: Math.max(1_000, deadlineAt - Date.now()),
       });
 
@@ -486,6 +502,7 @@ export default async function handler(
           model,
           systemPrompt,
           userPrompt,
+          sessionHeaders,
           timeoutMs: Math.max(1_000, deadlineAt - Date.now()),
         });
       }

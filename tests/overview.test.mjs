@@ -134,13 +134,12 @@ test('interest mix counts only confirmed interests on combined profiles', () => 
   assert.equal(countVerifiedInterests(INITIAL_PROFILES.map((p) => ({ ...p, isStitched: false })), 75, noApprovals).reduce((s, x) => s + x.count, 0), 0);
 });
 
-test('landing numbers, recipients and exclusions match a real run of the local engine', async (context) => {
+test('landing campaign results, recipients and exclusions match a real run of the local engine', async (context) => {
   context.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ fallback: true })));
   const { CAMPAIGN_PRESETS, RAW_SOURCE_RECORDS: records } = await import('../src/data/seedData.ts');
   const { runIdentityStitching, segmentCampaign, simulateCampaignResponses } = await import('../src/services/aiEngine.ts');
   const { buildReplySummaries, createCampaign } = await import('../src/utils/campaignFlow.ts');
-  const { LANDING_EXCLUDED, LANDING_MISREADS, LANDING_NUMBERS, LANDING_OUTCOME, LANDING_RECIPIENTS, LANDING_SCENARIOS } = await import('../src/data/landingDemo.ts');
-  const { buildDemoNumbers } = await import('../src/utils/demoNumbers.ts');
+  const { LANDING_EXCLUDED, LANDING_OUTCOME, LANDING_RECIPIENTS, LANDING_SCENARIOS } = await import('../src/data/landingDemo.ts');
 
   const combined = await runIdentityStitching(INITIAL_PROFILES, records);
   const { matches } = await segmentCampaign(CAMPAIGN_PRESETS[0], combined.profiles);
@@ -149,11 +148,6 @@ test('landing numbers, recipients and exclusions match a real run of the local e
   made.replies = buildReplySummaries(made, interactions);
   assert.deepEqual(LANDING_OUTCOME, summarizeCampaign(made));
 
-  assert.equal(LANDING_NUMBERS.messages, records.length);
-  assert.equal(LANDING_NUMBERS.profiles, combined.profiles.length);
-  assert.equal(LANDING_NUMBERS.sent, made.matches.length);
-  assert.equal(LANDING_NUMBERS.notConsented, 1);
-  assert.deepEqual(buildDemoNumbers([], [], { sent: 2, accepted: 1, declined: 0, pending: 1 }), { messages: 0, profiles: 0, sent: 2, accepted: 1, notConsented: 0 });
 
   for (const item of LANDING_RECIPIENTS) {
     const match = matches.find((entry) => entry.profileId === item.profile.id);
@@ -170,9 +164,4 @@ test('landing numbers, recipients and exclusions match a real run of the local e
   }
   assert.equal(LANDING_EXCLUDED.profile.consentPdpa, false);
 
-  // The keyword rules call every hit a "like"; the fixtures say otherwise for these messages.
-  for (const item of LANDING_MISREADS) {
-    assert.ok(item.rules.length > 0 && item.rules.every((line) => line.startsWith('ชอบ')));
-    assert.notDeepEqual(item.rules, item.answer, item.id);
-  }
 });

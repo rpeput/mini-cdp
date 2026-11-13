@@ -1,6 +1,8 @@
-import { ArrowRight, Database, FileText, MessageSquare, Plus, ScanLine, Search, Share2, Sparkles } from 'lucide-react';
+import { ArrowRight, Database, FileText, Plus, ScanLine, Search, Sparkles } from 'lucide-react';
 import { motion, useInView, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
+import facebookLogo from '../assets/facebook-brand.png';
+import lineLogo from '../assets/line-brand.png';
 import type { DataSourceType, RawSourceRecord, UnifiedProfile, UnlinkedRecord } from '../types/cdp.ts';
 import { IdentityInbox } from './IdentityInbox.tsx';
 import { ReviewQueue, type ReviewNotice } from './ReviewQueue.tsx';
@@ -47,7 +49,7 @@ const sortOptions: readonly SortOption[] = [
 const recordFilters = { source: 'all', status: 'all' };
 const statusLabels = { pending: 'รอประมวลผล', processed: 'ประมวลผลแล้ว' };
 
-const ROW_STEP_MS = 70;
+const ROW_STEP_MS = 94;
 
 /** A row nobody is looking at still ends up in its final state after this long. */
 const OFFSCREEN_FALLBACK_MS = 3500;
@@ -92,9 +94,9 @@ function SourceRow({ row: { record, profile, status }, query, delayMs, runId, ev
   return (
     <li ref={ref}>
       <div className="source-row-top">
-        <span className="chip-list"><span className="chip" lang="en">{SOURCE_META[record.source].shortLabel}</span>
+        <span className="chip-list"><span className="chip" data-source={record.source} lang="en">{SOURCE_META[record.source].shortLabel}</span>
           <motion.span key={shown} className={`chip ${shown === 'pending' ? 'chip-waiting' : 'chip-positive'}`}
-            initial={playing && shown === 'processed' ? { opacity: 0, scale: 0.9 } : false} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.2, ease: 'easeOut' }}>{statusLabels[shown]}</motion.span></span>
+            initial={playing && shown === 'processed' ? { opacity: 0, scale: 0.9 } : false} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.27, ease: 'easeOut' }}>{statusLabels[shown]}</motion.span></span>
         {profile && <button className="text-button" onClick={() => onInspectProfile(profile.id)}>ดูโปรไฟล์ {profile.nickname} <ArrowRight size={14} aria-hidden="true" /></button>}
       </div>
       <p><Highlight text={record.rawText} query={query} /></p>
@@ -104,8 +106,8 @@ function SourceRow({ row: { record, profile, status }, query, delayMs, runId, ev
         <div className="evidence-slot">
           {done && (
             <>
-              <motion.span className="evidence-bar" aria-hidden="true" style={{ originY: 0 }} initial={playing ? { scaleY: 0 } : false} animate={{ scaleY: 1 }} transition={{ duration: 0.25, ease: 'easeOut' }} />
-              <motion.span className="chip chip-fresh" initial={playing ? { opacity: 0, y: 4 } : false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, delay: playing ? 0.08 : 0, ease: 'easeOut' }}>
+              <motion.span className="evidence-bar" aria-hidden="true" style={{ originY: 0 }} initial={playing ? { scaleY: 0 } : false} animate={{ scaleY: 1 }} transition={{ duration: 0.33, ease: 'easeOut' }} />
+              <motion.span className="chip chip-fresh" initial={playing ? { opacity: 0, y: 4 } : false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.27, delay: playing ? 0.11 : 0, ease: 'easeOut' }}>
                 <Sparkles size={12} aria-hidden="true" /> เป็นหลักฐานของ: {evidence.join(', ')}
               </motion.span>
             </>
@@ -117,8 +119,8 @@ function SourceRow({ row: { record, profile, status }, query, delayMs, runId, ev
 }
 
 const sources = [
-  { id: 'LINE_CHAT', icon: MessageSquare },
-  { id: 'FACEBOOK_POST', icon: Share2 },
+  { id: 'LINE_CHAT', logo: lineLogo },
+  { id: 'FACEBOOK_POST', logo: facebookLogo },
   { id: 'DEPT_ROSTER', icon: FileText },
 ] as const;
 
@@ -153,8 +155,16 @@ export function CollectUnifyTab({ profiles, records, busy, isStitching, stitchFx
         </button>
       </header>
       <dl className="metric-grid">
-        {sources.map(({ id, icon: Icon }) => (
-          <div className="metric" key={id}><dt><Icon size={18} aria-hidden="true" /> <span lang="en">{SOURCE_META[id].label}</span></dt><dd>{records.filter((record) => record.source === id).length}</dd></div>
+        {sources.map((source) => (
+          <div className="metric" key={source.id}>
+            <dt>
+              {'logo' in source
+                ? <img src={source.logo} alt="" width={18} height={18} />
+                : <source.icon size={18} aria-hidden="true" />}
+              <span lang="en">{SOURCE_META[source.id].label}</span>
+            </dt>
+            <dd>{records.filter((record) => record.source === source.id).length}</dd>
+          </div>
         ))}
       </dl>
       <div className="notice notice-pipeline">
@@ -227,7 +237,7 @@ export function CollectUnifyTab({ profiles, records, busy, isStitching, stitchFx
               {view.rows.map((row) => {
                 const rank = rankByRecord.get(row.record.id);
                 return <SourceRow key={row.record.id} row={row} query={state.query} onInspectProfile={onInspectProfile}
-                  delayMs={rank === undefined ? null : staggerDelay(rank, ROW_STEP_MS, 10) + 120} runId={playFx?.id ?? null} evidence={stitchFx?.evidenceByRecord[row.record.id]} />;
+                  delayMs={rank === undefined ? null : staggerDelay(rank, ROW_STEP_MS, 10) + 160} runId={playFx?.id ?? null} evidence={stitchFx?.evidenceByRecord[row.record.id]} />;
               })}
             </ul>
           ) : (

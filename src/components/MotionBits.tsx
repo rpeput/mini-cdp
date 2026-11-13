@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
  * does not re-render React on every frame. Reduced motion shows the value at once, and the first
  * render always shows `from` (when given) or the value itself, so there is never a flash of a wrong number.
  */
-export function AnimatedNumber({ value, from, duration = 0.3, className }: { value: number; from?: number; duration?: number; className?: string }) {
+export function AnimatedNumber({ value, from, duration = 0.4, className }: { value: number; from?: number; duration?: number; className?: string }) {
   const reduced = useReducedMotion();
   const motionValue = useMotionValue(reduced ? value : from ?? value);
   const rounded = useTransform(() => Math.round(motionValue.get()));
@@ -27,7 +27,7 @@ export function Tick({ value, className }: { value: number | string; className?:
   const [firstValue] = useState(value);
   return (
     <motion.span key={value} className={`tick${className ? ` ${className}` : ''}`}
-      initial={value === firstValue ? false : { opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }}>
+      initial={value === firstValue ? false : { opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24, ease: 'easeOut' }}>
       {value}
     </motion.span>
   );
@@ -42,7 +42,7 @@ export function ScoreMeter({ score, animateIn, delay = 0 }: { score: number; ani
     <span className="match-score">
       <span className="score-track" aria-hidden="true">
         <motion.span className="score-fill" style={{ originX: 0 }} initial={animateIn ? { scaleX: 0 } : false}
-          animate={{ scaleX: Math.max(0, Math.min(100, score)) / 100 }} transition={{ duration: 0.3, delay, ease: 'easeOut' }} />
+          animate={{ scaleX: Math.max(0, Math.min(100, score)) / 100 }} transition={{ duration: 0.4, delay, ease: 'easeOut' }} />
       </span>
       <span>{animateIn ? <DelayedNumber value={score} delay={delay} /> : score}%</span>
     </span>
@@ -59,7 +59,7 @@ function DelayedNumber({ value, delay }: { value: number; delay: number }) {
       motionValue.set(value);
       return;
     }
-    const controls = animate(motionValue, value, { duration: 0.3, delay, ease: 'easeOut' });
+    const controls = animate(motionValue, value, { duration: 0.4, delay, ease: 'easeOut' });
     return () => controls.stop();
   }, [value, delay, reduced, motionValue]);
   return <motion.span>{rounded}</motion.span>;

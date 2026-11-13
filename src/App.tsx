@@ -335,9 +335,12 @@ export function App() {
           <main id="main-content" ref={mainRef} tabIndex={-1} className="workspace-main">
             <div className="workspace-content">
             <DemoAccountBanner activeTab={activeTab} friendCount={profiles.length} onTabChange={setActiveTab} />
-            <motion.div key={activeTab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, ease: 'easeOut' }}>
+            <motion.div key={activeTab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.27, ease: 'easeOut' }}>
               {activeTab === 'overview' && <OverviewTab profiles={profiles} records={records} campaigns={campaigns} inbox={inbox} confidenceThreshold={threshold}
-                manuallyApprovedIds={manuallyApprovedIds} onNavigate={navigate} />}
+                manuallyApprovedIds={manuallyApprovedIds} onNavigate={(tab, anchor) => {
+                  if (tab === 'analytics') setActiveCampaignId(campaigns[0]?.id ?? null);
+                  navigate(tab, anchor);
+                }} />}
               {activeTab === 'profiles' && <UnifiedProfilesTab profiles={profiles} confidenceThreshold={threshold} manuallyApprovedIds={manuallyApprovedIds}
                 freshByProfile={stitchFx?.freshByProfile} animateFresh={stitchFx ? !stitchFx.profilesSeen : false}
                 onFreshSeen={() => setStitchFx((current) => current && !current.profilesSeen ? { ...current, profilesSeen: true } : current)}

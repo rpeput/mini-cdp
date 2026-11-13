@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CampaignRecord } from '../types/cdp.ts';
 import { applyPlaybackEvent, buildPlaybackEvents, EMPTY_PLAYBACK, playableReplyIds, type PlaybackState } from '../utils/motionSequence.ts';
 
-const SETTLE_MS = 260;
+const SETTLE_MS = 350;
 
 /**
  * Plays simulated replies arriving one by one. This only *presents* data that is already final in the app:

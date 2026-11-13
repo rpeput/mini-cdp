@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import aiHandler from '../api/ai.ts';
 import { IDENTITY_CASES, REPLY_CASES, SIGNAL_CASES } from '../src/data/aiFixtures.ts';
 import { INITIAL_PROFILES, RAW_SOURCE_RECORDS } from '../src/data/seedData.ts';
 import { clearAiCalls, costOf, getAiCalls, percentile, summarizeAiCalls } from '../src/services/aiMetrics.ts';
@@ -15,6 +16,37 @@ import { applyPastedReply, linkUnlinkedRecord } from '../src/utils/aiActions.ts'
 import { queryProfiles } from '../src/utils/listViews.ts';
 
 const noModel = (context) => context.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ fallback: true })));
+test('the OpenCode Go proxy forwards a stable Gather session without forwarding it to other providers', async (context) => {
+  const session = '12345678-1234-4234-8234-123456789abc';
+  context.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(url, `${process.env.LLM_BASE_URL}/chat/completions`);
+    const isGo = url.startsWith('https://opencode.ai/inference/go/');
+    assert.equal(options.headers['x-opencode-session'], isGo ? session : undefined);
+    assert.equal(options.headers['User-Agent'], isGo ? 'Gather/1.0' : undefined);
+    return Response.json({ choices: [{ message: { content: '{"constraints":[],"clarifyingQuestion":""}' } }] });
+  });
+  const keys = ['LLM_API_KEY', 'LLM_BASE_URL', 'LLM_WIRE_API', 'LLM_MODEL'];
+  const previous = keys.map((key) => process.env[key]);
+  try {
+    process.env.LLM_API_KEY = 'test-key';
+    process.env.LLM_WIRE_API = 'chat';
+    process.env.LLM_MODEL = 'deepseek-v4.1-flash';
+    for (const baseUrl of ['https://opencode.ai/inference/go/openai/v1', 'https://example.com/v1']) {
+      process.env.LLM_BASE_URL = baseUrl;
+      const response = { status(code) { assert.equal(code, 200); return this; }, json(body) { assert.equal(body.fallback, false); } };
+      await aiHandler({
+        method: 'POST',
+        headers: { 'x-gather-ai-session': session },
+        body: { action: 'parse_brief', payload: { prompt: 'ชวนเดินป่า' } },
+      }, response);
+    }
+  } finally {
+    for (const [index, key] of keys.entries()) {
+      if (previous[index] === undefined) delete process.env[key];
+      else process.env[key] = previous[index];
+    }
+  }
+});
 const answerWith = (context, reply) =>
   context.mock.method(globalThis, 'fetch', async (_url, init) => {
     const { action, payload } = JSON.parse(init.body);
