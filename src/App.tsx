@@ -1,5 +1,5 @@
 import { MotionConfig, motion } from 'motion/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { AnalyticsLoopTab } from './components/AnalyticsLoopTab.tsx';
 import { CampaignSegmentTab } from './components/CampaignSegmentTab.tsx';
 import { AiPerformanceTab } from './components/AiPerformanceTab.tsx';
@@ -52,12 +52,27 @@ function loadDemo(): DemoData {
   return initialDemo();
 }
 
+function WorkspacePage({ active, children }: { active: boolean; children: ReactNode }) {
+  const [visited, setVisited] = useState(active);
+  if (active && !visited) setVisited(true);
+  if (!active && !visited) return null;
+  return (
+    <motion.div hidden={!active} initial={{ opacity: 0, y: 6 }}
+      animate={active ? { opacity: 1, y: 0 } : { opacity: 0, y: 6 }}
+      transition={{ duration: 0.27, ease: 'easeOut' }}>
+      {children}
+    </motion.div>
+  );
+}
+
 export function App() {
   const [demo, setDemo] = useState(loadDemo);
   const { profiles, records, campaigns, threshold, approved, inbox } = demo;
   const manuallyApprovedIds = new Set(approved);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [workspace, setWorkspace] = useState<'new' | 'open' | 'closed'>('new');
+  const isLoggedIn = workspace === 'open';
   const [activeTab, setActiveTab] = useState<WorkflowTabId>('profiles');
+  const [resetCount, setResetCount] = useState(0);
   const anchorRef = useRef<string | null>(null);
   const [reviewNotice, setReviewNotice] = useState<ReviewNotice | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
@@ -138,9 +153,11 @@ export function App() {
   function resetDemo() {
     if (busy || !window.confirm('เริ่มเดโมใหม่และล้างข้อมูลที่คุณเพิ่มกับผลแคมเปญในแท็บนี้?')) return;
     setDemo(initialDemo());
+    setResetCount((count) => count + 1);
     setStitchFx(null);
     setLaunchFx(null);
     setCampaignPrompt(CAMPAIGN_PRESETS[0]);
+    setBrief(null);
     clearMatches();
     setActiveCampaignId(null);
     setActiveTab('profiles');
@@ -322,25 +339,25 @@ export function App() {
 
   return (
     <MotionConfig reducedMotion="user">
-      {isLoggedIn ? (
-        <div className="workspace">
+      {workspace !== 'new' && (
+        <div className="workspace" hidden={!isLoggedIn}>
           <a href="#main-content" className="skip-link">ข้ามไปยังเนื้อหา</a>
           <TopNavbar activeTab={activeTab} onTabChange={setActiveTab}
-            onResetDemo={resetDemo} onReturnToLanding={() => setIsLoggedIn(false)} busy={busy} />
+            onResetDemo={resetDemo} onReturnToLanding={() => setWorkspace('closed')} busy={busy} />
           <main id="main-content" ref={mainRef} tabIndex={-1} className="workspace-main">
             <div className="workspace-content">
             <DemoAccountBanner activeTab={activeTab} onTabChange={setActiveTab} />
-            <motion.div key={activeTab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.27, ease: 'easeOut' }}>
-              {activeTab === 'overview' && <OverviewTab profiles={profiles} records={records} campaigns={campaigns} inbox={inbox} confidenceThreshold={threshold}
+            <div key={resetCount}>
+              <WorkspacePage active={isLoggedIn && activeTab === 'overview'}><OverviewTab profiles={profiles} records={records} campaigns={campaigns} inbox={inbox} confidenceThreshold={threshold}
                 manuallyApprovedIds={manuallyApprovedIds} onNavigate={(tab, anchor) => {
                   if (tab === 'analytics') setActiveCampaignId(campaigns[0]?.id ?? null);
                   navigate(tab, anchor);
-                }} />}
-              {activeTab === 'profiles' && <UnifiedProfilesTab profiles={profiles} confidenceThreshold={threshold} manuallyApprovedIds={manuallyApprovedIds}
+                }} /></WorkspacePage>
+              <WorkspacePage active={isLoggedIn && activeTab === 'profiles'}><UnifiedProfilesTab active={isLoggedIn && activeTab === 'profiles'} profiles={profiles} confidenceThreshold={threshold} manuallyApprovedIds={manuallyApprovedIds}
                 freshByProfile={stitchFx?.freshByProfile} animateFresh={stitchFx ? !stitchFx.profilesSeen : false}
                 onFreshSeen={() => setStitchFx((current) => current && !current.profilesSeen ? { ...current, profilesSeen: true } : current)}
-                onSelectProfile={setInspectedProfileId} onGoToSources={goToSources} onGoToCampaign={goToCampaign} />}
-              {activeTab === 'collect' && <CollectUnifyTab profiles={profiles} records={records} busy={busy} stitchFx={stitchFx} isStitching={operation === 'stitch'} confidenceThreshold={threshold}
+                onSelectProfile={setInspectedProfileId} onGoToSources={goToSources} onGoToCampaign={goToCampaign} /></WorkspacePage>
+              <WorkspacePage active={isLoggedIn && activeTab === 'collect'}><CollectUnifyTab profiles={profiles} records={records} busy={busy} stitchFx={stitchFx} isStitching={operation === 'stitch'} confidenceThreshold={threshold}
                 onThresholdChange={(value) => {
                   setDemo((current) => ({ ...current, threshold: value }));
                   clearMatches();
@@ -348,33 +365,34 @@ export function App() {
                 onRunStitching={stitch} onAddSignal={addSignal} onInspectProfile={setInspectedProfileId} onGoToCampaign={goToCampaign}
                 inbox={inbox} onLoadSampleInbox={loadSampleInbox} onConfirmLink={confirmLink} onDismissInbox={dismissInbox}
                 manuallyApprovedIds={manuallyApprovedIds} reviewNotice={reviewNotice} reviewError={reviewError} onReviewDecide={decideReview}
-                onReviewUndo={undoReview} onReviewClear={() => { setReviewNotice(null); setReviewError(null); }} />}
-              {activeTab === 'segment' && <CampaignSegmentTab profiles={profiles} records={records} confidenceThreshold={threshold} manuallyApprovedIds={manuallyApprovedIds}
+                onReviewUndo={undoReview} onReviewClear={() => { setReviewNotice(null); setReviewError(null); }} /></WorkspacePage>
+              <WorkspacePage active={isLoggedIn && activeTab === 'segment'}><CampaignSegmentTab profiles={profiles} records={records} confidenceThreshold={threshold} manuallyApprovedIds={manuallyApprovedIds}
                 segmentSource={segmentSource} onInspectProfile={setInspectedProfileId} brief={brief} onBriefChange={setBrief} campaignPrompt={campaignPrompt} matches={matches} busy={busy}
                 isSegmenting={operation === 'segment'} didSegment={didSegment} onPromptChange={(prompt) => { setCampaignPrompt(prompt); setBrief(null); clearMatches(); }}
-                onMatchesChange={setMatches} onRunSegment={recommend} onLaunchCampaign={launch} onGoToSources={goToSources} runId={matchRun} />}
-              {activeTab === 'analytics' && <AnalyticsLoopTab campaigns={campaigns} activeCampaignId={activeCampaignId} profiles={profiles} busy={busy}
+                onMatchesChange={setMatches} onRunSegment={recommend} onLaunchCampaign={launch} onGoToSources={goToSources} runId={matchRun} /></WorkspacePage>
+              <WorkspacePage active={isLoggedIn && activeTab === 'analytics'}><AnalyticsLoopTab active={isLoggedIn && activeTab === 'analytics'} campaigns={campaigns} activeCampaignId={activeCampaignId} profiles={profiles} busy={busy}
                 isSimulating={operation === 'simulate'} onSelectCampaign={setActiveCampaignId} onSimulateReplies={simulate}
                 onGoToSegmentation={goToCampaign} onInspectProfile={setInspectedProfileId} onSaveReply={savePastedReply}
                 launchFx={launchFx} onLaunchPlayed={() => setLaunchFx((current) => current && !current.played ? { ...current, played: true } : current)}
-                playbackRun={simulateRun.n} playbackCampaignId={simulateRun.campaignId} />}
-              {activeTab === 'ai' && <AiPerformanceTab />}
-            </motion.div>
+                playbackRun={simulateRun.n} playbackCampaignId={simulateRun.campaignId} /></WorkspacePage>
+              <WorkspacePage active={isLoggedIn && activeTab === 'ai'}><AiPerformanceTab /></WorkspacePage>
+            </div>
             </div>
           </main>
           <ProfileInspectorDrawer profile={inspectedProfile} records={records} onClose={() => setInspectedProfileId(null)}
             confidenceThreshold={threshold} manuallyApprovedIds={manuallyApprovedIds} onAttributeDecision={decideAttribute} busy={busy} />
           <ToastRegion toasts={toasts} onDismiss={dismissToast} suppressed={inspectedProfile !== null} />
         </div>
-      ) : (
+      )}
+      {!isLoggedIn && (
         <LandingPage onEnterWorkspace={(tab, prompt) => {
           setActiveTab(tab);
-          if (tab === 'segment') {
+          if (tab === 'segment' && prompt !== undefined && prompt !== campaignPrompt) {
             setBrief(null);
-            setCampaignPrompt(prompt ?? CAMPAIGN_PRESETS[0]);
+            setCampaignPrompt(prompt);
             clearMatches();
           }
-          setIsLoggedIn(true);
+          setWorkspace('open');
         }} />
       )}
     </MotionConfig>

@@ -11,7 +11,7 @@ const SETTLE_MS = 350;
  * only when `runId` changes while the page is mounted (the reply was simulated here), never on a revisit,
  * and never with reduced motion. `skip` ends the run at the final values.
  */
-export function useReplyPlayback(campaign: CampaignRecord | undefined, runId: number, runCampaignId: string | null) {
+export function useReplyPlayback(campaign: CampaignRecord | undefined, runId: number, runCampaignId: string | null, active: boolean) {
   const reduced = useReducedMotion();
   const [state, setState] = useState<PlaybackState | null>(null);
   const seenRun = useRef(runId);
@@ -30,7 +30,7 @@ export function useReplyPlayback(campaign: CampaignRecord | undefined, runId: nu
     if (runId === seenRun.current) return;
     seenRun.current = runId;
     const target = campaignRef.current;
-    if (reduced || !target || target.id !== runCampaignId || !target.simulated) return;
+    if (!active || reduced || !target || target.id !== runCampaignId || !target.simulated) return;
     const events = buildPlaybackEvents(playableReplyIds(target));
     if (!events.length) return;
     setState(EMPTY_PLAYBACK);
@@ -43,7 +43,7 @@ export function useReplyPlayback(campaign: CampaignRecord | undefined, runId: nu
       stop();
       setState(null);
     };
-  }, [runId, runCampaignId, reduced, stop]);
+  }, [runId, runCampaignId, active, reduced, stop]);
 
   // Switching to another campaign ends a run that belongs to the first.
   const campaignId = campaign?.id;

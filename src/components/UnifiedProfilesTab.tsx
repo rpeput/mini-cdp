@@ -10,6 +10,7 @@ import { paginate } from '../utils/tableQuery.ts';
 import { ClearFiltersButton, Highlight, SearchBox, type SortOption, SortControl, SortHeader, TablePagination } from './TableControls.tsx';
 
 interface UnifiedProfilesTabProps {
+  active: boolean;
   profiles: UnifiedProfile[];
   confidenceThreshold: number;
   manuallyApprovedIds: Set<string>;
@@ -39,10 +40,12 @@ function inviteSummary({ accepted, declined, pending }: ProfileRow): string {
   return parts.join(' · ');
 }
 
-export function UnifiedProfilesTab({ profiles, confidenceThreshold, manuallyApprovedIds, freshByProfile, animateFresh = false, onFreshSeen, onSelectProfile, onGoToSources, onGoToCampaign }: UnifiedProfilesTabProps) {
+export function UnifiedProfilesTab({ active, profiles, confidenceThreshold, manuallyApprovedIds, freshByProfile, animateFresh = false, onFreshSeen, onSelectProfile, onGoToSources, onGoToCampaign }: UnifiedProfilesTabProps) {
   const reduced = useReducedMotion();
-  const [playFresh] = useState(animateFresh && !reduced);
-  useEffect(() => { onFreshSeen?.(); }, [onFreshSeen]);
+  const playFresh = active && animateFresh && !reduced;
+  useEffect(() => {
+    if (active && animateFresh) onFreshSeen?.();
+  }, [active, animateFresh, onFreshSeen]);
   const table = useTableState({ storageKey: 'gather-table-profiles', filters: profileFilters, sortKey: 'name', direction: 'asc', sortKeys: PROFILE_SORT_KEYS });
   const { state } = table;
   const [question, setQuestion] = useState('');

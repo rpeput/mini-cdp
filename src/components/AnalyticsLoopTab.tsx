@@ -1,6 +1,6 @@
 import { ArrowRight, ChevronDown, Clock3, MessageSquare, Send, ThumbsDown, ThumbsUp, UserCheck } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useReplyPlayback } from '../hooks/useReplyPlayback.ts';
 import type { CampaignRecord, UnifiedProfile } from '../types/cdp.ts';
 import type { PastedReply } from '../utils/aiActions.ts';
@@ -12,6 +12,7 @@ import { playableReplyIds, staggerDelay, visibleReplies } from '../utils/motionS
 import { AnimatedNumber } from './MotionBits.tsx';
 
 interface AnalyticsLoopTabProps {
+  active: boolean;
   campaigns: CampaignRecord[];
   activeCampaignId: string | null;
   onSelectCampaign: (id: string) => void;
@@ -36,17 +37,18 @@ const statuses = {
   pending: { label: 'ยังไม่ตอบ', className: 'chip-waiting' },
 };
 
-export function AnalyticsLoopTab({ campaigns, activeCampaignId, onSelectCampaign, profiles, busy, isSimulating, onSimulateReplies, onGoToSegmentation, onInspectProfile, onSaveReply, launchFx, onLaunchPlayed, playbackRun, playbackCampaignId }: AnalyticsLoopTabProps) {
+export function AnalyticsLoopTab({ active, campaigns, activeCampaignId, onSelectCampaign, profiles, busy, isSimulating, onSimulateReplies, onGoToSegmentation, onInspectProfile, onSaveReply, launchFx, onLaunchPlayed, playbackRun, playbackCampaignId }: AnalyticsLoopTabProps) {
   const campaign = campaigns.find((item) => item.id === activeCampaignId) ?? campaigns[0];
   const recipients = campaign?.matches.filter((match) => match.selected) ?? [];
   const reduced = useReducedMotion();
   // A just-sent campaign is shown arriving once; a revisit, or reduced motion, shows it as it is.
-  const [playLaunch] = useState(() => launchFx !== null && !launchFx.played && !reduced && launchFx.campaignId === (activeCampaignId ?? campaigns[0]?.id));
+  const isNewCampaign = active && launchFx !== null && !launchFx.played && launchFx.campaignId === campaign?.id;
+  const playLaunch = isNewCampaign && !reduced;
   useEffect(() => {
-    if (launchFx && !launchFx.played) onLaunchPlayed();
-  }, [launchFx, onLaunchPlayed]);
+    if (isNewCampaign) onLaunchPlayed();
+  }, [isNewCampaign, onLaunchPlayed]);
   // The replies in state are already final. While a run plays, the screen only holds back the ones that have not "arrived".
-  const { state: playback, playing, skip } = useReplyPlayback(campaign, playbackRun, playbackCampaignId);
+  const { state: playback, playing, skip } = useReplyPlayback(campaign, playbackRun, playbackCampaignId, active);
   const playable = playableReplyIds(campaign);
   const shownReplies = visibleReplies(campaign?.replies ?? [], playable, playback);
   const { accepted, declined, pending } = summarizeCampaign(campaign && { ...campaign, replies: shownReplies });
@@ -55,10 +57,10 @@ export function AnalyticsLoopTab({ campaigns, activeCampaignId, onSelectCampaign
   const wasPlaying = useRef(false);
   useEffect(() => {
     // The skip button is removed when the run ends; keep keyboard focus in the panel instead of losing it.
-    if (wasPlaying.current && !playing && skipHadFocus.current) headingRef.current?.focus({ preventScroll: true });
+    if (active && wasPlaying.current && !playing && skipHadFocus.current) headingRef.current?.focus({ preventScroll: true });
     if (!playing) skipHadFocus.current = false;
     wasPlaying.current = playing;
-  }, [playing]);
+  }, [active, playing]);
 
   return (
     <section aria-labelledby="analytics-title">
@@ -109,7 +111,7 @@ export function AnalyticsLoopTab({ campaigns, activeCampaignId, onSelectCampaign
               const status = statuses[reply?.status ?? 'pending'];
               const typing = playback?.typing.includes(match.profileId) ?? false;
               return (
-                <motion.li key={match.profileId} layout="position" initial={playLaunch ? { opacity: 0, y: 6 } : false} animate={{ opacity: 1, y: 0 }}
+                <motion.li key={`${campaign.id}:${match.profileId}`} layout="position" initial={playLaunch ? { opacity: 0, y: 6 } : false} animate={{ opacity: 1, y: 0 }}
                   transition={{ default: { duration: 0.27, delay: playLaunch ? staggerDelay(index, 67, 10) / 1000 : 0, ease: 'easeOut' }, layout: { duration: 0.29, ease: 'easeOut' } }}>
                   <div className="response-person">
                     <button className="profile-link" onClick={() => onInspectProfile(match.profileId)}>

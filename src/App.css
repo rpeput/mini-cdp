@@ -44,6 +44,7 @@ main:focus { outline: none; }
 .nav-item:disabled { opacity: .62; }
 .workspace-main { min-width: 0; padding: 37px clamp(18px, 4vw, 58px) 65px; }
 .workspace-content { max-width: 1260px; margin-inline: auto; }
+.workspace[hidden] { display: none; }
 .page-heading { display: flex; justify-content: space-between; align-items: end; gap: 14px; margin-bottom: 24px; }
 .page-heading h1 { font-size: clamp(1.92rem, 3.35vw, 2.85rem); font-weight: 700; line-height: 1.24; letter-spacing: -.035em; }
 .page-heading p { margin-top: 5px; color: var(--gather-muted); }
