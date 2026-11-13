@@ -1,12 +1,13 @@
 import { ArrowRight, Database, FileText, Plus, ScanLine, Search, Sparkles } from 'lucide-react';
 import { motion, useInView, useReducedMotion } from 'motion/react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import facebookLogo from '../assets/facebook-brand.png';
 import lineLogo from '../assets/line-brand.png';
 import type { DataSourceType, RawSourceRecord, UnifiedProfile, UnlinkedRecord } from '../types/cdp.ts';
 import { IdentityInbox } from './IdentityInbox.tsx';
 import { ReviewQueue, type ReviewNotice } from './ReviewQueue.tsx';
-import type { ReviewTarget } from '../utils/reviewQueue.ts';
+import { StepGuide, type GuideStep } from './StepGuide.tsx';
+import { listReviewRows, type ReviewTarget } from '../utils/reviewQueue.ts';
 import { useTableState } from '../hooks/useTableState.ts';
 import { formatDateShort, SOURCE_META } from '../utils/cdpHelpers.ts';
 import { querySources, SOURCE_SORT_KEYS, type SourceQuery, type SourceRow as SourceRowData } from '../utils/listViews.ts';
@@ -39,6 +40,12 @@ interface CollectUnifyTabProps {
   onReviewUndo: () => void;
   onReviewClear: () => void;
 }
+
+const SOURCE_STEPS: GuideStep[] = [
+  { label: 'รวมข้อมูล', hint: 'กด "รวมและสกัดข้อมูล" ด้านบนขวา' },
+  { label: 'ตรวจที่ไม่มั่นใจ', hint: 'ยืนยันหรือปฏิเสธความสนใจในคิวตรวจสอบ' },
+  { label: 'ไปสร้างแคมเปญ', hint: 'ข้อมูลพร้อมแล้ว กดสร้างแคมเปญ' },
+];
 
 const sortOptions: readonly SortOption[] = [
   { key: 'time', label: 'เวลา', asc: 'เก่า → ใหม่', desc: 'ใหม่ → เก่า' },
@@ -139,6 +146,8 @@ export function CollectUnifyTab({ profiles, records, busy, isStitching, stitchFx
     direction: state.direction,
   });
   const view = paginate(matched, state.page, state.pageSize);
+  const reviewCount = useMemo(() => listReviewRows(profiles, confidenceThreshold, manuallyApprovedIds).length, [profiles, confidenceThreshold, manuallyApprovedIds]);
+  const step = pending.length ? 0 : reviewCount ? 1 : 2;
   const reduced = useReducedMotion();
   // A run is played only if it finished while this page was open; coming back to the page shows the result as it is.
   const [mountedFxId] = useState(stitchFx?.id);
@@ -154,6 +163,7 @@ export function CollectUnifyTab({ profiles, records, busy, isStitching, stitchFx
           <ScanLine size={18} aria-hidden="true" /> {isStitching ? 'กำลังรวมข้อมูล…' : 'รวมและสกัดข้อมูล'}
         </button>
       </header>
+      <StepGuide label="ขั้นตอนเตรียมข้อมูล" current={step} steps={SOURCE_STEPS} />
       <dl className="metric-grid">
         {sources.map((source) => (
           <div className="metric" key={source.id}>

@@ -8,6 +8,7 @@ import type { CampaignBrief, CampaignMatch, RawSourceRecord, UnifiedProfile } fr
 import { staggerDelay } from '../utils/motionSequence.ts';
 import { BriefPanel } from './BriefPanel.tsx';
 import { ScoreMeter, Tick } from './MotionBits.tsx';
+import { StepGuide, type GuideStep } from './StepGuide.tsx';
 import { RecommendationEvidenceDrawer } from './RecommendationEvidenceDrawer.tsx';
 
 interface CampaignSegmentTabProps {
@@ -33,7 +34,13 @@ interface CampaignSegmentTabProps {
   runId: number;
 }
 
-const presetNames = ['หมูกระทะ', 'เดินป่า', 'เที่ยวทะเล', 'แฮงเอาท์', 'ตีแบด', 'ติวหนังสือ', 'คอนเสิร์ต'];
+const CAMPAIGN_STEPS: GuideStep[] = [
+  { label: 'บอกกิจกรรม', hint: 'เลือกตัวอย่างหรือพิมพ์เอง แล้วกดแนะนำผู้รับ' },
+  { label: 'เลือกผู้รับ', hint: 'ติ๊กเพื่อนที่อยากชวน' },
+  { label: 'ตรวจและส่ง', hint: 'อ่านคำเชิญ แล้วกดส่งทางขวา' },
+];
+
+const presetNames =['หมูกระทะ', 'เดินป่า', 'เที่ยวทะเล', 'แฮงเอาท์', 'ตีแบด', 'ติวหนังสือ', 'คอนเสิร์ต'];
 
 export function CampaignSegmentTab({ profiles, records, confidenceThreshold, manuallyApprovedIds, segmentSource, onInspectProfile, brief, onBriefChange, campaignPrompt, onPromptChange, matches, onMatchesChange, busy, isSegmenting, didSegment, onRunSegment, onLaunchCampaign, onGoToSources, runId }: CampaignSegmentTabProps) {
   const reduced = useReducedMotion();
@@ -57,6 +64,7 @@ export function CampaignSegmentTab({ profiles, records, confidenceThreshold, man
   const checkFor = (match: CampaignMatch) => (checks[match.profileId]?.text === match.personalizedInvite ? checks[match.profileId].check : null);
   const checked = selected.map(checkFor).filter((item): item is InviteCheck => item !== null);
   const flagged = checked.filter((item) => !item.ok).length;
+  const step = !matches.length ? 0 : !selected.length ? 1 : 2;
 
   async function runCheck() {
     if (checking || !selected.length || hasBlankInvite) return;
@@ -79,6 +87,7 @@ export function CampaignSegmentTab({ profiles, records, confidenceThreshold, man
       <header className="page-heading">
         <div><h1 id="campaign-title">สร้างแคมเปญ</h1><p>บอกว่าคุณอยากชวนเพื่อนไปทำอะไร แล้วเลือกผู้รับและข้อความก่อนส่ง</p></div>
       </header>
+      <StepGuide label="ขั้นตอนสร้างแคมเปญ" current={step} steps={CAMPAIGN_STEPS} />
       {pending > 0 && (
         <div className="notice">
           <ShieldCheck size={19} aria-hidden="true" />
@@ -150,7 +159,7 @@ export function CampaignSegmentTab({ profiles, records, confidenceThreshold, man
             )}
           </div>
         </div>
-        <aside className="surface panel campaign-summary" aria-label="สรุปคำเชิญ">
+        <aside className={`surface panel campaign-summary${step < 2 ? ' is-waiting' : ''}`} aria-label="สรุปคำเชิญ">
           <span className="summary-icon"><Send size={20} aria-hidden="true" /></span>
           <h2>สรุปคำเชิญ</h2>
           <p>ส่งข้อความจำลองผ่าน LINE ให้เฉพาะเพื่อนที่คุณเลือก</p>

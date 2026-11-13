@@ -444,3 +444,17 @@ th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--gather-acce
 .ai-tip .button-light { background: transparent; color: #fbf9ff; border-color: #9286a7; }
 .ai-tip .button-light:hover:not(:disabled) { background: #312747; }
 @media (max-width: 640px) { .ai-tip { inset-inline: 0; width: auto; } }
+
+/* Step guide: shows where the user is in a multi-part page */
+.step-guide { margin-bottom: 16px; }
+.step-guide ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; list-style: none; margin: 0; padding: 0; }
+.step-guide li { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--gather-border); border-radius: 12px; background: #fff; color: var(--gather-muted); }
+.step-guide li[data-state="current"] { border-color: var(--gather-accent); background: var(--gather-tint); color: var(--gather-ink); }
+.step-guide li[data-state="done"] { color: var(--gather-ink); }
+.step-mark { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--gather-control-border); font-size: .78rem; font-weight: 700; }
+.step-guide li[data-state="current"] .step-mark { background: var(--gather-accent); border-color: var(--gather-accent); color: #fff; }
+.step-guide li[data-state="done"] .step-mark { background: #e2f4ed; border-color: #125640; color: #125640; }
+.step-text { display: grid; gap: 2px; min-width: 0; font-size: .9rem; }
+.step-text small { font-size: .8rem; color: var(--gather-muted); overflow-wrap: anywhere; }
+.campaign-summary.is-waiting { opacity: .62; }
+@media (max-width: 640px) { .step-guide ol { grid-template-columns: 1fr; } }
