@@ -22,6 +22,8 @@ export function CoachTarget({ active, title, children, target, onDone }: CoachTa
   const reduced = useReducedMotion();
   const wrapRef = useRef<HTMLSpanElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
+  const doneRef = useRef(onDone);
+  doneRef.current = onDone;
 
   useEffect(() => {
     if (!active) return;
@@ -38,7 +40,7 @@ export function CoachTarget({ active, title, children, target, onDone }: CoachTa
     };
     place();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onDone();
+      if (event.key === 'Escape') doneRef.current();
     };
     window.addEventListener('resize', place);
     document.addEventListener('keydown', onKey);
@@ -46,7 +48,7 @@ export function CoachTarget({ active, title, children, target, onDone }: CoachTa
       window.removeEventListener('resize', place);
       document.removeEventListener('keydown', onKey);
     };
-  }, [active, onDone, reduced]);
+  }, [active, reduced]);
 
   return (
     <motion.span ref={wrapRef} className="ai-mode-wrap coach-wrap" animate={active && !reduced ? { scale: [1, 1.1, 1] } : { scale: 1 }} transition={{ duration: 0.6, ease: 'easeInOut', delay: 0.5 }}>

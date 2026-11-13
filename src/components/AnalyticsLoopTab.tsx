@@ -1,10 +1,11 @@
 import { ArrowRight, ChevronDown, Clock3, MessageSquare, Send, ThumbsDown, ThumbsUp, UserCheck } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useReplyPlayback } from '../hooks/useReplyPlayback.ts';
 import type { CampaignRecord, UnifiedProfile } from '../types/cdp.ts';
 import type { PastedReply } from '../utils/aiActions.ts';
 import { CampaignInsights } from './CampaignInsights.tsx';
+import { CoachTarget } from './CoachTarget.tsx';
 import { ReplyReader } from './ReplyReader.tsx';
 import { summarizeCampaign } from '../utils/campaignFlow.ts';
 import { formatCampaignDate } from '../utils/cdpHelpers.ts';
@@ -37,6 +38,9 @@ const statuses = {
   pending: { label: 'ยังไม่ตอบ', className: 'chip-waiting' },
 };
 
+/** The note after sending a campaign is shown once per page load. */
+let simulateCoachSeen = false;
+
 export function AnalyticsLoopTab({ active, campaigns, activeCampaignId, onSelectCampaign, profiles, busy, isSimulating, onSimulateReplies, onGoToSegmentation, onInspectProfile, onSaveReply, launchFx, onLaunchPlayed, playbackRun, playbackCampaignId }: AnalyticsLoopTabProps) {
   const campaign = campaigns.find((item) => item.id === activeCampaignId) ?? campaigns[0];
   const recipients = campaign?.matches.filter((match) => match.selected) ?? [];
@@ -44,9 +48,14 @@ export function AnalyticsLoopTab({ active, campaigns, activeCampaignId, onSelect
   // A just-sent campaign is shown arriving once; a revisit, or reduced motion, shows it as it is.
   const isNewCampaign = active && launchFx !== null && !launchFx.played && launchFx.campaignId === campaign?.id;
   const playLaunch = isNewCampaign && !reduced;
+  const [coachFor, setCoachFor] = useState<string | null>(null);
   useEffect(() => {
-    if (isNewCampaign) onLaunchPlayed();
-  }, [isNewCampaign, onLaunchPlayed]);
+    if (!isNewCampaign) return;
+    onLaunchPlayed();
+    if (!simulateCoachSeen && campaign) setCoachFor(campaign.id);
+  }, [isNewCampaign, onLaunchPlayed, campaign]);
+  const coachOn = active && !!campaign && coachFor === campaign.id && !campaign.simulated && !busy && !simulateCoachSeen;
+  const dismissCoach = () => { simulateCoachSeen = true; setCoachFor(null); };
   // The replies in state are already final. While a run plays, the screen only holds back the ones that have not "arrived".
   const { state: playback, playing, skip } = useReplyPlayback(campaign, playbackRun, playbackCampaignId, active);
   const playable = playableReplyIds(campaign);
@@ -95,8 +104,12 @@ export function AnalyticsLoopTab({ active, campaigns, activeCampaignId, onSelect
             <div className="response-heading">
               <div><h2 ref={headingRef} tabIndex={-1}>คำตอบของเพื่อน</h2><p role="status">{isSimulating || playing ? 'กำลังจำลองคำตอบ…' : campaign.simulated ? `บันทึกคำตอบกลับเข้า ${campaign.closedLoopUpdatesCount} โปรไฟล์แล้ว` : 'ทุกคำเชิญอยู่ในสถานะรอตอบกลับ'}</p></div>
               <div className="response-actions">
-                {playing && <button className="button button-light" onFocus={() => { skipHadFocus.current = true; }} onBlur={() => { skipHadFocus.current = false; }} onClick={skip}>ข้ามการเล่น</button>}
-                <button className="button button-primary" disabled={busy || campaign.simulated} onClick={() => onSimulateReplies(campaign.id)}><MessageSquare size={17} aria-hidden="true" /> {isSimulating || playing ? 'กำลังจำลอง…' : campaign.simulated ? 'จำลองคำตอบแล้ว' : 'จำลองคำตอบ'}</button>
+                {playing && <button className="button button-light" onFocus={() => { skipHadFocus.current = true; }} onBlur={() => { skipHadFocus.current = false; }} onClick={skip}>ข้าม</button>}
+                <CoachTarget active={coachOn} title="ต่อไป: ดูว่าเพื่อนตอบอะไร" onDone={dismissCoach} target={
+                  <button className="button button-primary" disabled={busy || campaign.simulated} onClick={() => { dismissCoach(); onSimulateReplies(campaign.id); }}><MessageSquare size={17} aria-hidden="true" /> {isSimulating || playing ? 'กำลังจำลอง…' : campaign.simulated ? 'จำลองคำตอบแล้ว' : 'จำลองคำตอบ'}</button>
+                }>
+                  ส่งคำเชิญไปแล้ว แต่ยังไม่มีใครตอบ กด <strong>จำลองคำตอบ</strong> เพื่อให้ระบบสร้างคำตอบของเพื่อนแต่ละคน แล้วบันทึกกลับเข้าโปรไฟล์ ถ้ามีคำตอบจริงจากเพื่อน กด <strong>วางคำตอบจริง</strong> ใต้ชื่อคนนั้นได้
+                </CoachTarget>
               </div>
             </div>
             <div className="response-bar" aria-hidden="true">

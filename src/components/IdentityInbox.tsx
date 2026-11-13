@@ -1,5 +1,6 @@
 import { Download, Sparkles, UserCheck, X } from 'lucide-react';
 import { useState } from 'react';
+import { CoachTarget } from './CoachTarget.tsx';
 import { IDENTITY_CONFIDENCE_FLOOR, type IdentitySuggestion, resolveIdentities } from '../services/ai/identity.ts';
 import type { RawSourceRecord, UnifiedProfile, UnlinkedRecord } from '../types/cdp.ts';
 import { SOURCE_META } from '../utils/cdpHelpers.ts';
@@ -14,12 +15,20 @@ interface IdentityInboxProps {
   onDismiss: (recordId: string) => void;
 }
 
+/** The inbox notes are shown once per page load, after the visitor imports the samples themselves. */
+let inboxCoachSeen = { propose: false, confirm: false };
+
 export function IdentityInbox({ inbox, profiles, records, busy, onLoadSamples, onConfirm, onDismiss }: IdentityInboxProps) {
   const [suggestions, setSuggestions] = useState<Record<string, IdentitySuggestion>>({});
   const [choices, setChoices] = useState<Record<string, string>>({});
   const [source, setSource] = useState<'model' | 'rules' | null>(null);
   const [loading, setLoading] = useState(false);
   const asked = inbox.some((record) => suggestions[record.id]);
+  const [imported, setImported] = useState(false);
+  const [, rerender] = useState(0);
+  const finishCoach = (stage: 'propose' | 'confirm') => { inboxCoachSeen = { ...inboxCoachSeen, [stage]: true }; rerender((n) => n + 1); };
+  const coachPropose = imported && !asked && inbox.length > 0 && !inboxCoachSeen.propose && !busy;
+  const coachRecordId = imported && asked && !inboxCoachSeen.confirm && !busy ? inbox.find((record) => choices[record.id])?.id : undefined;
 
   async function propose() {
     if (loading || !inbox.length) return;
@@ -45,10 +54,14 @@ export function IdentityInbox({ inbox, profiles, records, busy, onLoadSamples, o
           <p>ชื่อบัญชีที่ไม่ตรงกับเพื่อนคนไหนเป๊ะ ๆ AI เสนอเจ้าของพร้อมหลักฐาน แล้วคุณเป็นคนยืนยัน</p>
         </div>
         <div className="inbox-actions">
-          <button className="button button-light" disabled={busy} onClick={onLoadSamples}><Download size={16} aria-hidden="true" /> นำเข้าข้อความกำกวมตัวอย่าง</button>
-          <button className="button button-primary" disabled={busy || loading || !inbox.length} onClick={propose}>
-            <Sparkles size={16} aria-hidden="true" /> {loading ? 'กำลังอ่านชื่อและข้อความ…' : asked ? 'เสนอเจ้าของใหม่' : 'เสนอเจ้าของข้อความ'}
-          </button>
+          <button className="button button-light" disabled={busy} onClick={() => { setImported(true); onLoadSamples(); }}><Download size={16} aria-hidden="true" /> นำเข้าข้อความกำกวมตัวอย่าง</button>
+          <CoachTarget active={coachPropose} title="ข้อความพวกนี้ยังไม่รู้เจ้าของ" onDone={() => finishCoach('propose')} target={
+            <button className="button button-primary" disabled={busy || loading || !inbox.length} onClick={() => { finishCoach('propose'); propose(); }}>
+              <Sparkles size={16} aria-hidden="true" /> {loading ? 'กำลังอ่านชื่อและข้อความ…' : asked ? 'เสนอเจ้าของใหม่' : 'เสนอเจ้าของข้อความ'}
+            </button>
+          }>
+            ชื่อบัญชีในข้อความไม่ตรงกับเพื่อนคนไหนเป๊ะ ๆ กด <strong>เสนอเจ้าของข้อความ</strong> ให้ระบบเดาว่าเป็นของใคร พร้อมบอกหลักฐาน ยังไม่มีอะไรเปลี่ยนในโปรไฟล์จนกว่าคุณจะยืนยัน
+          </CoachTarget>
         </div>
       </div>
       {source && <p className="muted inbox-source" role="status">{source === 'model' ? 'เสนอโดยโมเดล ตรวจแล้วว่าหลักฐานคัดลอกมาจากข้อความจริง' : 'โหมดพื้นฐานจับคู่จากชื่อไทยและชื่อบัญชีที่เคยพบ'}</p>}
@@ -81,7 +94,11 @@ export function IdentityInbox({ inbox, profiles, records, busy, onLoadSamples, o
                       {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.nickname} · {profile.fullName}</option>)}
                     </select>
                   </label>
-                  <button className="button button-primary" disabled={busy || !chosen} onClick={() => onConfirm(record.id, chosen)}><UserCheck size={16} aria-hidden="true" /> ยืนยันว่าเป็นของคนนี้</button>
+                  <CoachTarget active={coachRecordId === record.id} title="เช็กเจ้าของก่อนยืนยัน" onDone={() => finishCoach('confirm')} target={
+                    <button className="button button-primary" disabled={busy || !chosen} onClick={() => { finishCoach('confirm'); onConfirm(record.id, chosen); }}><UserCheck size={16} aria-hidden="true" /> ยืนยันว่าเป็นของคนนี้</button>
+                  }>
+                    ระบบเสนอชื่อกับหลักฐานไว้ให้แล้ว ถ้าตรงกับที่คุณรู้ กด <strong>ยืนยันว่าเป็นของคนนี้</strong> ข้อความจะถูกผูกกับเพื่อนคนนั้น ถ้าไม่ตรง เปลี่ยนชื่อในช่องเลือกก่อน หรือกด <strong>ข้าม</strong>
+                  </CoachTarget>
                   <button className="button button-light" onClick={() => onDismiss(record.id)}><X size={16} aria-hidden="true" /> ข้าม</button>
                 </div>
                 {picked && !picked.consentPdpa && <p className="muted inbox-note">{picked.nickname}ยังไม่ยินยอมรับคำเชิญ การผูกข้อความไม่เปลี่ยนเรื่องนี้ ระบบจะไม่ส่งคำเชิญให้</p>}
