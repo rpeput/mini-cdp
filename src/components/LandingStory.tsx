@@ -1,10 +1,11 @@
 import { Check, Database, LayoutDashboard, Pause, Play, Radio, RotateCcw, SquareActivity, Users } from 'lucide-react';
-import { motion, useInView, useMotionValueEvent, useReducedMotion, useScroll, useTransform } from 'motion/react';
-import { type ReactNode, useRef, useState, useSyncExternalStore } from 'react';
+import { type MotionValue, motion, useInView, useMotionValueEvent, useReducedMotion, useScroll, useTransform } from 'motion/react';
+import { createContext, type ReactNode, useContext, useRef, useState, useSyncExternalStore } from 'react';
 import facebookIcon from '../assets/facebook-brand.png';
 import lineIcon from '../assets/line-brand.png';
 import { LANDING_DEMO as demo, LANDING_OUTCOME, LANDING_RECIPIENTS } from '../data/landingDemo.ts';
 import { formatDateShort } from '../utils/cdpHelpers.ts';
+import { CountUp } from './CountUp.tsx';
 
 type NavId = 'collect' | 'profiles' | 'segment' | 'analytics';
 
@@ -38,6 +39,60 @@ function Marked({ text, term }: { text: string; term: string }) {
   const at = text.indexOf(term);
   if (at < 0) return <>{text}</>;
   return <>{text.slice(0, at)}<mark>{term}</mark>{text.slice(at + term.length)}</>;
+}
+
+/**
+ * On a narrow screen each story panel is revealed by scrolling: it rises, scales up and fades in as it
+ * reaches the middle of the screen, then its rows, numbers and highlights play in turn. `null` means no
+ * reveal (wide screens, which are pinned, and reduced motion), so rows and numbers are plain and final.
+ */
+const RevealCtx = createContext<boolean | null>(null);
+
+function RevealItem({ index, children, ...rest }: { index: number; children: ReactNode; 'data-focus'?: boolean }) {
+  const play = useContext(RevealCtx);
+  if (play === null) return <li {...rest}>{children}</li>;
+  return (
+    <motion.li {...rest} initial={{ opacity: 0, y: 16 }} animate={play ? { opacity: 1, y: 0 } : { opacity: 0, y: 16 }}
+      transition={{ duration: 0.35, delay: play ? 0.12 + index * 0.1 : 0, ease: 'easeOut' }}>
+      {children}
+    </motion.li>
+  );
+}
+
+function RevealCount({ value }: { value: number }) {
+  const play = useContext(RevealCtx);
+  return play === null ? <>{value}</> : <CountUp value={value} start={play} />;
+}
+
+function MobilePanel({ children }: { children: ReactNode }) {
+  const reduced = useReducedMotion();
+  const ref = useRef<HTMLDivElement>(null);
+  const seen = useInView(ref, { amount: 0.35, once: true });
+  const { scrollYProgress } = useScroll({ target: ref, offset: ['start 95%', 'start 55%'] });
+  const scale = useTransform(scrollYProgress, [0, 1], [0.93, 1]);
+  const y = useTransform(scrollYProgress, [0, 1], [40, 0]);
+  const opacity = useTransform(scrollYProgress, [0, 1], [0.35, 1]);
+  if (reduced) return <div className="story-inline" data-seen="true">{children}</div>;
+  return (
+    <RevealCtx.Provider value={seen}>
+      <motion.div ref={ref} className="story-inline" data-seen={seen} style={{ scale, y, opacity, originY: 0 }}>{children}</motion.div>
+    </RevealCtx.Provider>
+  );
+}
+
+function RailSegment({ progress, index, total }: { progress: MotionValue<number>; index: number; total: number }) {
+  const fill = useTransform(progress, [index / total, (index + 1) / total], [0, 1], { clamp: true });
+  return <span className="rail-seg"><motion.span style={{ scaleX: fill }} /></span>;
+}
+
+/** Sticky on narrow screens: which of the four steps you are on, filling as you scroll. */
+function StoryRail({ progress, step }: { progress: MotionValue<number>; step: number }) {
+  return (
+    <div className="story-rail" aria-hidden="true">
+      <span className="rail-label">ขั้น {step + 1} จาก {steps.length}</span>
+      <div className="rail-segs">{steps.map((item, index) => <RailSegment key={item.title} progress={progress} index={index} total={steps.length} />)}</div>
+    </div>
+  );
 }
 
 export function DemoChat({ active }: { active?: boolean }) {
@@ -95,14 +150,14 @@ function StepPanel({ index, active }: { index: number; active?: boolean }) {
     return (
       <WorkspaceFrame active="collect" title="แหล่งข้อมูล">
         <ul className="ws-list">
-          {[{ record: lineRecord, term: demo.highlight, icon: lineIcon, name: 'LINE' }, { record: fbRecord, term: demo.facebook.highlight, icon: facebookIcon, name: 'Facebook' }].map(({ record, term, icon, name }) => (
-            <li key={record.id}>
+          {[{ record: lineRecord, term: demo.highlight, icon: lineIcon, name: 'LINE' }, { record: fbRecord, term: demo.facebook.highlight, icon: facebookIcon, name: 'Facebook' }].map(({ record, term, icon, name }, i) => (
+            <RevealItem key={record.id} index={i}>
               <div className="ws-row-top">
                 <img src={icon} alt="" width="22" height="22" /><span className="chip" lang="en">{name}</span>
                 <span className="muted">{record.handle} · {formatDateShort(record.timestamp)}</span>
               </div>
               <p className="ws-quote"><Marked text={record.rawText} term={term} /></p>
-            </li>
+            </RevealItem>
           ))}
         </ul>
       </WorkspaceFrame>
@@ -117,14 +172,14 @@ function StepPanel({ index, active }: { index: number; active?: boolean }) {
           <span className="chip chip-positive">ยินยอมรับคำเชิญ</span>
         </div>
         <ul className="ws-list">
-          {person.attributes.map((attribute) => (
-            <li key={attribute.id} data-focus={attribute.evidenceQuote === demo.evidence.evidenceQuote}>
+          {person.attributes.map((attribute, i) => (
+            <RevealItem key={attribute.id} index={i} data-focus={attribute.evidenceQuote === demo.evidence.evidenceQuote}>
               <div className="ws-row-top">
                 <span className="chip">{attribute.value}</span>
                 <span className="chip chip-positive">มั่นใจ {attribute.confidence}%</span>
               </div>
               <p className="ws-quote">{attribute.evidenceQuote}</p>
-            </li>
+            </RevealItem>
           ))}
         </ul>
       </WorkspaceFrame>
@@ -135,8 +190,8 @@ function StepPanel({ index, active }: { index: number; active?: boolean }) {
       <WorkspaceFrame active="segment" title="สร้างแคมเปญ">
         <p className="ws-campaign"><span className="muted">กิจกรรมที่คุณพิมพ์</span><strong>{demo.campaign}</strong></p>
         <ul className="ws-list">
-          {LANDING_RECIPIENTS.map(({ profile, term, record }) => (
-            <li key={profile.id}>
+          {LANDING_RECIPIENTS.map(({ profile, term, record }, i) => (
+            <RevealItem key={profile.id} index={i}>
               <div className="ws-row-top">
                 <span className="ws-check" aria-hidden="true"><Check size={14} /></span>
                 <span className="preview-avatar" aria-hidden="true">{profile.nickname[0]}</span>
@@ -144,7 +199,7 @@ function StepPanel({ index, active }: { index: number; active?: boolean }) {
                 <span className="chip chip-positive">ตรงกลุ่ม</span>
               </div>
               <p className="ws-quote"><span className="muted">เหตุผล: </span><Marked text={record.rawText} term={term} /></p>
-            </li>
+            </RevealItem>
           ))}
         </ul>
         <p className="ws-note">ติ๊กเลือกและแก้ข้อความได้ก่อนส่ง · แสดงเฉพาะเพื่อนที่ยินยอม</p>
@@ -154,10 +209,10 @@ function StepPanel({ index, active }: { index: number; active?: boolean }) {
   return (
     <WorkspaceFrame active="analytics" title="ผลแคมเปญ">
       <dl className="ws-metrics">
-        <div><dt>ส่ง</dt><dd>{LANDING_OUTCOME.sent}</dd></div>
-        <div><dt>ตอบรับ</dt><dd>{LANDING_OUTCOME.accepted}</dd></div>
-        <div><dt>ปฏิเสธ</dt><dd>{LANDING_OUTCOME.declined}</dd></div>
-        <div><dt>ยังไม่ตอบ</dt><dd>{LANDING_OUTCOME.pending}</dd></div>
+        <div><dt>ส่ง</dt><dd><RevealCount value={LANDING_OUTCOME.sent} /></dd></div>
+        <div><dt>ตอบรับ</dt><dd><RevealCount value={LANDING_OUTCOME.accepted} /></dd></div>
+        <div><dt>ปฏิเสธ</dt><dd><RevealCount value={LANDING_OUTCOME.declined} /></dd></div>
+        <div><dt>ยังไม่ตอบ</dt><dd><RevealCount value={LANDING_OUTCOME.pending} /></dd></div>
       </dl>
       <DemoChat active={active} />
     </WorkspaceFrame>
@@ -199,6 +254,7 @@ export function LandingStory() {
           <p>เรื่องเดียวต่อเนื่อง 4 ขั้น ใช้หน้าจอจริงของ Gather และข้อมูลสมมติชุดเดียวกับเดโม</p>
         </div>
         <div className="story-track" ref={track} data-mode={linear ? 'linear' : 'pinned'}>
+          {narrow && !reducedMotion && <StoryRail progress={scrollYProgress} step={step} />}
           <ol className="story-steps">
             {steps.map((item, index) => (
               <li key={item.title} className="story-step" data-active={linear || index === step}>
@@ -206,13 +262,7 @@ export function LandingStory() {
                 <h3>{item.title}</h3>
                 <p>{item.body}</p>
                 {linear && (
-                  <motion.div className="story-inline"
-                    initial={reducedMotion ? false : { opacity: 0.8, y: 22 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true, amount: 0.2 }}
-                    transition={{ duration: reducedMotion ? 0 : 0.42, ease: 'easeOut' }}>
-                    <StepPanel index={index} />
-                  </motion.div>
+                  <MobilePanel><StepPanel index={index} /></MobilePanel>
                 )}
               </li>
             ))}

@@ -429,3 +429,18 @@ th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--gather-acce
 .chip-typing { display: inline-flex; align-items: center; gap: 5px; background: #eeedf1; color: #534a62; }
 .typing-dots { display: inline-flex; gap: 2px; }
 .typing-dots span { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+
+/* AI mode note: a one-time pointer to the switch. Transform and opacity only; it never covers the switch itself. */
+.demo-account { position: relative; }
+.ai-mode-wrap { position: relative; display: inline-flex; }
+.ai-ring { position: absolute; inset: -3px; border: 2px solid var(--gather-accent); border-radius: 12px; pointer-events: none; }
+.ai-tip { position: absolute; z-index: 30; top: calc(100% + 12px); inset-inline-end: 0; width: min(340px, 100%); padding: 16px; border-radius: 14px; background: var(--gather-night); color: #fbf9ff; box-shadow: 0 18px 44px #21183240; font-size: .9rem; line-height: 1.6; }
+.ai-tip::before { content: ""; position: absolute; top: -6px; inset-inline-start: calc(var(--arrow-x, 50%) - 6px); width: 12px; height: 12px; background: var(--gather-night); transform: rotate(45deg); border-radius: 2px; }
+.ai-tip p { margin: 0; }
+.ai-tip-title { display: flex; align-items: center; gap: 6px; margin-bottom: 4px !important; font-weight: 700; color: var(--gather-lilac); }
+.ai-tip-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.ai-tip .button-primary { background: var(--gather-lilac); color: var(--gather-night); }
+.ai-tip .button-primary:hover:not(:disabled) { background: #eee4ff; }
+.ai-tip .button-light { background: transparent; color: #fbf9ff; border-color: #9286a7; }
+.ai-tip .button-light:hover:not(:disabled) { background: #312747; }
+@media (max-width: 640px) { .ai-tip { inset-inline: 0; width: auto; } }

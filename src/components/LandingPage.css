@@ -67,7 +67,7 @@
 /* The highlight is a block that scales in from the left, so only transform moves. */
 .ws-frame mark { position: relative; display: inline-block; padding-inline: 4px; max-width: 100%; background: none; color: inherit; font-weight: 600; isolation: isolate; }
 .ws-frame mark::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 4px; background: #d9c8ff; transform: scaleX(0); transform-origin: left center; }
-.story-panel[data-active="true"] mark::before, .story-inline mark::before, .hero-preview[data-active="true"] mark::before { transform: scaleX(1); transition: transform .3s ease-out .12s; }
+.story-panel[data-active="true"] mark::before, .story-inline[data-seen="true"] mark::before, .hero-sources[data-ready="true"] .hero-preview[data-active="true"] mark::before { transform: scaleX(1); transition: transform .3s ease-out .12s; }
 
 /* Hero source switcher */
 .hero-sources { min-width: 0; }
@@ -185,5 +185,14 @@
 @media (prefers-reduced-motion: reduce) {
   .landing * { transition-duration: 0s !important; animation-duration: 0s !important; animation-delay: 0s !important; }
   .ws-frame mark::before { transform: scaleX(1); }
+  .story-rail { display: none; }
   .story-track .story-step { opacity: 1 !important; }
 }
+
+/* ---------- Narrow screens: scroll-driven story ---------- */
+.story-rail { position: sticky; top: 0; z-index: 6; display: flex; align-items: center; gap: 12px; margin-bottom: 4px; padding: 10px 0; background: #fbf9ffee; backdrop-filter: blur(8px); }
+.rail-label { flex-shrink: 0; font-size: .82rem; font-weight: 700; color: var(--gather-accent); }
+.rail-segs { display: flex; flex: 1; gap: 5px; }
+.rail-seg { flex: 1; height: 4px; overflow: hidden; border-radius: 2px; background: var(--gather-border); }
+.rail-seg > span { display: block; width: 100%; height: 100%; background: var(--gather-accent); transform-origin: left center; }
+.hero-sources .source-panels { touch-action: pan-y; }
