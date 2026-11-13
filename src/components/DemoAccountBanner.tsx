@@ -86,7 +86,7 @@ export function DemoAccountBanner({ activeTab, onTabChange }: DemoAccountBannerP
             initial={reduced ? false : { opacity: 0, scale: 0.9, y: -8 }} animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.12 } }} transition={{ duration: 0.24, ease: 'easeOut' }}>
             <p className="ai-tip-title"><Sparkles size={16} aria-hidden="true" /> มีโหมด AI ให้เลือก</p>
-            <p>เปิดไว้ AI จะช่วยอ่านข้อความ แนะนำผู้รับ และตรวจคำเชิญ ปิดแล้วระบบใช้กฎในเครื่องแทน สลับได้ทุกเมื่อที่ปุ่มนี้</p>
+            <p>เปิดไว้ AI จะช่วยอ่านข้อความ แนะนำผู้รับ และตรวจคำเชิญ ปิดแล้วระบบใช้กฎพื้นฐานแทน สลับได้ทุกเมื่อที่ปุ่มนี้</p>
             <div className="ai-tip-actions">
               <button type="button" className="button button-primary" onClick={dismissTip}>เข้าใจแล้ว</button>
               <button type="button" className="button button-light" onClick={flip}>{useAi ? 'ลองปิด AI' : 'เปิด AI'}</button>
