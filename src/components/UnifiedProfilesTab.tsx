@@ -1,4 +1,6 @@
-import { ArrowRight, ArrowUpRight, Database, Search, ShieldCheck, Users } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Database, Search, ShieldCheck, Sparkles, Users, X } from 'lucide-react';
+import { useState } from 'react';
+import { readSearch, type SearchIntent } from '../services/ai/searchIntent.ts';
 import { useTableState } from '../hooks/useTableState.ts';
 import type { UnifiedProfile } from '../types/cdp.ts';
 import { type ProfileQuery, type ProfileRow, PROFILE_SORT_KEYS, queryProfiles } from '../utils/listViews.ts';
@@ -22,7 +24,7 @@ const sortOptions: readonly SortOption[] = [
   { key: 'status', label: 'สถานะ', asc: 'พร้อมก่อน', desc: 'ยังไม่ยินยอมก่อน' },
   { key: 'acceptance', label: 'อัตราตอบรับ', asc: 'น้อย → มาก', desc: 'มาก → น้อย' },
 ];
-const profileFilters = { status: 'all', interest: 'all', reply: 'all' };
+const profileFilters = { status: 'all', interest: 'all', reply: 'all', anyTerms: '' };
 const statusText = { 'no-consent': 'ยังไม่ยินยอม', ready: 'พร้อมรับคำเชิญ', pending: 'รอรวมข้อมูล' };
 
 function inviteSummary({ accepted, declined, pending }: ProfileRow): string {
@@ -33,6 +35,34 @@ function inviteSummary({ accepted, declined, pending }: ProfileRow): string {
 export function UnifiedProfilesTab({ profiles, confidenceThreshold, manuallyApprovedIds, onSelectProfile, onGoToSources, onGoToCampaign }: UnifiedProfilesTabProps) {
   const table = useTableState({ storageKey: 'gather-table-profiles', filters: profileFilters, sortKey: 'name', direction: 'asc', sortKeys: PROFILE_SORT_KEYS });
   const { state } = table;
+  const [question, setQuestion] = useState('');
+  const [asking, setAsking] = useState(false);
+  const [aiNote, setAiNote] = useState<Pick<SearchIntent, 'explanation' | 'source'> | null>(null);
+  const anyTerms = state.filters.anyTerms ? state.filters.anyTerms.split('|') : [];
+  const clearAll = () => { table.clearFilters(); setAiNote(null); };
+
+  async function ask() {
+    const text = question.trim();
+    if (!text || asking) return;
+    setAsking(true);
+    try {
+      const intent = await readSearch(text);
+      // The model only proposes filters; the table runs them, so the shown rows are always real matches.
+      table.clearFilters();
+      table.setQuery(intent.terms.join(' '));
+      table.setFilter('status', intent.status);
+      table.setFilter('interest', intent.interest);
+      table.setFilter('reply', intent.reply);
+      table.setFilter('anyTerms', intent.anyTerms.join('|'));
+      if (intent.sort) {
+        table.setSortKey(intent.sort.key);
+        table.setDirection(intent.sort.direction);
+      }
+      setAiNote({ explanation: intent.explanation, source: intent.source });
+    } finally {
+      setAsking(false);
+    }
+  }
   const unified = profiles.filter((profile) => profile.isStitched);
   const canInvite = unified.filter((profile) => profile.consentPdpa);
   const matched = queryProfiles(profiles, confidenceThreshold, manuallyApprovedIds, {
@@ -40,6 +70,7 @@ export function UnifiedProfilesTab({ profiles, confidenceThreshold, manuallyAppr
     status: state.filters.status as ProfileQuery['status'],
     interest: state.filters.interest as ProfileQuery['interest'],
     reply: state.filters.reply as ProfileQuery['reply'],
+    anyTerms,
     sortKey: state.sortKey,
     direction: state.direction,
   });
@@ -79,8 +110,25 @@ export function UnifiedProfilesTab({ profiles, confidenceThreshold, manuallyAppr
             <option value="all">ทุกคำตอบ</option><option value="accepted">เคยตอบรับ</option><option value="declined">เคยปฏิเสธ</option><option value="pending">มีคำเชิญที่ยังไม่ตอบ</option><option value="never">ยังไม่เคยได้รับคำเชิญ</option>
           </select></label>
           <SortControl options={sortOptions} sortKey={state.sortKey} direction={state.direction} onSortKeyChange={table.setSortKey} onDirectionChange={table.setDirection} />
-          {table.hasActiveFilters && <ClearFiltersButton onClear={table.clearFilters} />}
+          {table.hasActiveFilters && <ClearFiltersButton onClear={clearAll} />}
         </div>
+        <form className="ai-search" onSubmit={(event) => { event.preventDefault(); void ask(); }}>
+          <label className="search-field">
+            <Sparkles size={17} aria-hidden="true" />
+            <span className="sr-only">ถามเป็นประโยค</span>
+            <input type="text" value={question} maxLength={160} disabled={asking} onChange={(event) => setQuestion(event.target.value)} placeholder="ถามเป็นประโยค เช่น ใครงบตึงและเคยปฏิเสธ" />
+          </label>
+          <button className="button button-light" type="submit" disabled={asking || !question.trim()}>{asking ? 'กำลังแปลง…' : 'แปลงเป็นตัวกรอง'}</button>
+        </form>
+        {(aiNote || anyTerms.length > 0) && (
+          <div className="ai-filter-note" role="status">
+            {aiNote && <p>{aiNote.source === 'model' ? 'AI แปลงคำถามเป็นตัวกรอง' : 'กฎในเครื่องแปลงคำถามเป็นตัวกรอง'}: {aiNote.explanation}</p>}
+            {anyTerms.length > 0 && (
+              <p className="chip-list">มีคำใดคำหนึ่ง: {anyTerms.map((term) => <span key={term} className="chip">{term}</span>)}
+                <button type="button" className="chip-remove" aria-label="ลบตัวกรองคำใดคำหนึ่ง" onClick={() => table.setFilter('anyTerms', '')}><X size={13} aria-hidden="true" /></button></p>
+            )}
+          </div>
+        )}
         {view.rows.length ? (
           <table className="profile-table">
             <thead><tr>
@@ -108,7 +156,7 @@ export function UnifiedProfilesTab({ profiles, confidenceThreshold, manuallyAppr
               );
             })}</tbody>
           </table>
-        ) : <div className="empty"><Search aria-hidden="true" /><h3>ไม่พบเพื่อนที่ตรงกับการค้นหา</h3><p>ลองเปลี่ยนคำค้นหาหรือล้างตัวกรอง</p><button className="button button-light" onClick={table.clearFilters}>ล้างตัวกรอง</button></div>}
+        ) : <div className="empty"><Search aria-hidden="true" /><h3>ไม่พบเพื่อนที่ตรงกับการค้นหา</h3><p>ลองเปลี่ยนคำค้นหาหรือล้างตัวกรอง</p><button className="button button-light" onClick={clearAll}>ล้างตัวกรอง</button></div>}
         <TablePagination total={view.total} page={view.page} pageSize={view.pageSize} from={view.from} to={view.to} label="รายชื่อเพื่อน"
           onPageChange={table.setPage} onPageSizeChange={table.setPageSize} />
       </div>

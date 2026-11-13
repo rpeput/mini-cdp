@@ -71,6 +71,8 @@ export interface ProfileQuery {
   status: ProfileStatus | 'all';
   interest: AttributeCategory | 'all';
   reply: ReplyFilter | 'all';
+  /** Alternatives: a friend matches when any one of these appears in their name or interests. */
+  anyTerms?: readonly string[];
   sortKey: string;
   direction: SortDirection;
 }
@@ -115,7 +117,9 @@ export function queryProfiles(
     if (options.reply === 'accepted' && !accepted) return false;
     if (options.reply === 'declined' && !declined) return false;
     if (options.reply === 'pending' && !pending) return false;
-    return matchesSearch([profile.nickname, profile.fullName, profile.studentId, ...verifiedTraits.map((trait) => trait.value)], options.query);
+    const fields = [profile.nickname, profile.fullName, profile.studentId, ...verifiedTraits.map((trait) => trait.value)];
+    if (options.anyTerms?.length && !options.anyTerms.some((term) => matchesSearch(fields, term))) return false;
+    return matchesSearch(fields, options.query);
   });
 
   const keys: Record<string, (row: ProfileRow) => SortValue> = {

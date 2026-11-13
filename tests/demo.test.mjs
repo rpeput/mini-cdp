@@ -1,3 +1,5 @@
+import './overview.test.mjs';
+import './ai.test.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CAMPAIGN_PRESETS, INITIAL_PROFILES, RAW_SOURCE_RECORDS } from '../src/data/seedData.ts';

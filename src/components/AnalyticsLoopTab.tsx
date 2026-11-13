@@ -1,6 +1,9 @@
 import { ArrowRight, Clock3, MessageSquare, Send, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { motion } from 'motion/react';
 import type { CampaignRecord, UnifiedProfile } from '../types/cdp.ts';
+import type { PastedReply } from '../utils/aiActions.ts';
+import { CampaignInsights } from './CampaignInsights.tsx';
+import { ReplyReader } from './ReplyReader.tsx';
 import { summarizeCampaign } from '../utils/campaignFlow.ts';
 
 interface AnalyticsLoopTabProps {
@@ -13,6 +16,7 @@ interface AnalyticsLoopTabProps {
   onSimulateReplies: (id: string) => void;
   onGoToSegmentation: () => void;
   onInspectProfile: (id: string) => void;
+  onSaveReply: (campaignId: string, reply: PastedReply) => void;
 }
 
 const dateFormat = new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
@@ -22,7 +26,7 @@ const statuses = {
   pending: { label: 'ยังไม่ตอบ', className: 'chip-waiting' },
 };
 
-export function AnalyticsLoopTab({ campaigns, activeCampaignId, onSelectCampaign, profiles, busy, isSimulating, onSimulateReplies, onGoToSegmentation, onInspectProfile }: AnalyticsLoopTabProps) {
+export function AnalyticsLoopTab({ campaigns, activeCampaignId, onSelectCampaign, profiles, busy, isSimulating, onSimulateReplies, onGoToSegmentation, onInspectProfile, onSaveReply }: AnalyticsLoopTabProps) {
   const campaign = campaigns.find((item) => item.id === activeCampaignId) ?? campaigns[0];
   const recipients = campaign?.matches.filter((match) => match.selected) ?? [];
   const { accepted, declined, pending } = summarizeCampaign(campaign);
@@ -69,15 +73,18 @@ export function AnalyticsLoopTab({ campaigns, activeCampaignId, onSelectCampaign
                       <span><strong>{profile?.nickname ?? match.profileId}</strong><small>{profile?.fullName}</small></span>
                       <ArrowRight size={16} aria-hidden="true" />
                     </button>
-                    <span className={`chip ${status.className}`}>{status.label}</span>
+                    <span className="chip-list">{reply?.origin === 'pasted' && <span className="chip">คำตอบจริง</span>}<span className={`chip ${status.className}`}>{status.label}</span></span>
                   </div>
                   <details className="response-message"><summary>คำเชิญที่ส่ง <span className="sr-only">ถึง {profile?.nickname}</span></summary><p>{match.personalizedInvite}</p></details>
                   {reply?.replyText && <p className="reply-text">“{reply.replyText}”</p>}
+                  {reply?.note && <p className="reply-note">เงื่อนไข: {reply.note}</p>}
                   {reply?.feedbackTag && <span className="chip">{reply.feedbackTag}</span>}
+                  {profile && <ReplyReader profile={profile} invite={match.personalizedInvite} busy={busy} onSave={(reply) => onSaveReply(campaign.id, reply)} />}
                 </li>
               );
             })}</ul>
           </div>
+          <CampaignInsights campaign={campaign} profiles={profiles} onInspectProfile={onInspectProfile} />
         </>
       ) : (
         <div className="surface empty"><Send aria-hidden="true" /><h2>ยังไม่มีแคมเปญที่ส่ง</h2><p>สร้างแคมเปญแรกเพื่อดูคำเชิญและทดลองติดตามคำตอบ</p><button className="button button-primary" onClick={onGoToSegmentation}>ไปสร้างแคมเปญ <ArrowRight size={17} aria-hidden="true" /></button></div>

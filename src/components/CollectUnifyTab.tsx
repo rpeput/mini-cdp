@@ -1,6 +1,9 @@
 import { ArrowRight, Database, FileText, MessageSquare, Plus, ScanLine, Search, Share2 } from 'lucide-react';
 import { useState } from 'react';
-import type { DataSourceType, RawSourceRecord, UnifiedProfile } from '../types/cdp.ts';
+import type { DataSourceType, RawSourceRecord, UnifiedProfile, UnlinkedRecord } from '../types/cdp.ts';
+import { IdentityInbox } from './IdentityInbox.tsx';
+import { ReviewQueue, type ReviewNotice } from './ReviewQueue.tsx';
+import type { ReviewTarget } from '../utils/reviewQueue.ts';
 import { useTableState } from '../hooks/useTableState.ts';
 import { formatDateShort, SOURCE_META } from '../utils/cdpHelpers.ts';
 import { querySources, SOURCE_SORT_KEYS, type SourceQuery } from '../utils/listViews.ts';
@@ -18,6 +21,16 @@ interface CollectUnifyTabProps {
   onAddSignal: (id: string, source: DataSourceType, text: string) => void;
   onInspectProfile: (id: string) => void;
   onGoToCampaign: () => void;
+  inbox: UnlinkedRecord[];
+  onLoadSampleInbox: () => void;
+  onConfirmLink: (recordId: string, profileId: string) => void;
+  onDismissInbox: (recordId: string) => void;
+  manuallyApprovedIds: ReadonlySet<string>;
+  reviewNotice: ReviewNotice | null;
+  reviewError: string | null;
+  onReviewDecide: (targets: ReviewTarget[], decision: 'verified' | 'rejected') => void;
+  onReviewUndo: () => void;
+  onReviewClear: () => void;
 }
 
 const sortOptions: readonly SortOption[] = [
@@ -35,7 +48,7 @@ const sources = [
   { id: 'DEPT_ROSTER', icon: FileText },
 ] as const;
 
-export function CollectUnifyTab({ profiles, records, busy, isStitching, confidenceThreshold, onThresholdChange, onRunStitching, onAddSignal, onInspectProfile, onGoToCampaign }: CollectUnifyTabProps) {
+export function CollectUnifyTab({ profiles, records, busy, isStitching, confidenceThreshold, onThresholdChange, onRunStitching, onAddSignal, onInspectProfile, onGoToCampaign, inbox, onLoadSampleInbox, onConfirmLink, onDismissInbox, manuallyApprovedIds, reviewNotice, reviewError, onReviewDecide, onReviewUndo, onReviewClear }: CollectUnifyTabProps) {
   const table = useTableState({ storageKey: 'gather-table-sources', filters: recordFilters, sortKey: 'time', direction: 'desc', sortKeys: SOURCE_SORT_KEYS });
   const { state } = table;
   const [profileId, setProfileId] = useState(profiles[0]?.id ?? '');
@@ -69,6 +82,9 @@ export function CollectUnifyTab({ profiles, records, busy, isStitching, confiden
         <p role="status">{isStitching ? 'กำลังจับคู่ข้อมูลและอ่านข้อความต้นทาง…' : pending.length ? <><strong>{pending.length} โปรไฟล์รอประมวลผล</strong> ระบบจะจับคู่ด้วยรหัสโปรไฟล์ในชุดตัวอย่าง แล้วบันทึกความสนใจพร้อมข้อความอ้างอิง</> : <><strong>รวมข้อมูลครบแล้ว</strong> เปิดโปรไฟล์เพื่อตรวจหลักฐาน หรือนำข้อมูลไปสร้างแคมเปญ</>}</p>
         {!pending.length && <button className="button button-light" onClick={onGoToCampaign}>สร้างแคมเปญ <ArrowRight size={16} aria-hidden="true" /></button>}
       </div>
+      <IdentityInbox inbox={inbox} profiles={profiles} records={records} busy={busy} onLoadSamples={onLoadSampleInbox} onConfirm={onConfirmLink} onDismiss={onDismissInbox} />
+      <ReviewQueue profiles={profiles} confidenceThreshold={confidenceThreshold} manuallyApprovedIds={manuallyApprovedIds} busy={busy} loading={isStitching}
+        error={reviewError} notice={reviewNotice} onDecide={onReviewDecide} onUndo={onReviewUndo} onClearNotice={onReviewClear} onInspectProfile={onInspectProfile} />
       <div className="source-layout">
         <div className="source-tools">
           <form className="surface panel" onSubmit={(event) => {

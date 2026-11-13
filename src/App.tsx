@@ -2,7 +2,10 @@ import { MotionConfig, motion } from 'motion/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnalyticsLoopTab } from './components/AnalyticsLoopTab.tsx';
 import { CampaignSegmentTab } from './components/CampaignSegmentTab.tsx';
+import { AiPerformanceTab } from './components/AiPerformanceTab.tsx';
 import { CollectUnifyTab } from './components/CollectUnifyTab.tsx';
+import { OverviewTab } from './components/OverviewTab.tsx';
+import type { ReviewNotice } from './components/ReviewQueue.tsx';
 import { LandingPage } from './components/LandingPage.tsx';
 import { ProfileInspectorDrawer } from './components/ProfileInspectorDrawer.tsx';
 import { type ToastItem, ToastRegion } from './components/ToastRegion.tsx';
@@ -10,11 +13,15 @@ import { DemoAccountBanner } from './components/DemoAccountBanner.tsx';
 import { TopNavbar } from './components/TopNavbar.tsx';
 import { UnifiedProfilesTab } from './components/UnifiedProfilesTab.tsx';
 import { XRayDrawer } from './components/XRayDrawer.tsx';
+import { IDENTITY_CASES } from './data/aiFixtures.ts';
 import { CAMPAIGN_PRESETS, INITIAL_PROFILES, RAW_SOURCE_RECORDS } from './data/seedData.ts';
 import { runIdentityStitching, segmentCampaign, simulateCampaignResponses } from './services/aiEngine.ts';
-import type { CampaignMatch, CampaignRecord, DataSourceType, PipelineLog, RawSourceRecord, UnifiedProfile, WorkflowTabId } from './types/cdp.ts';
+import { applyBriefToMatches } from './services/ai/brief.ts';
+import type { CampaignBrief, CampaignMatch, CampaignRecord, DataSourceType, PipelineLog, RawSourceRecord, UnifiedProfile, UnlinkedRecord, WorkflowTabId } from './types/cdp.ts';
+import { applyPastedReply, linkUnlinkedRecord, type PastedReply } from './utils/aiActions.ts';
 import { buildReplySummaries, createCampaign, recordSentInvitations } from './utils/campaignFlow.ts';
 import { getEffectiveAttributeStatus } from './utils/cdpHelpers.ts';
+import { applyReviewDecisions, undoReviewDecisions, type ReviewTarget } from './utils/reviewQueue.ts';
 import './App.css';
 
 const storageKey = 'gather-demo-v1';
@@ -26,10 +33,12 @@ interface DemoData {
   logs: PipelineLog[];
   approved: string[];
   threshold: number;
+  /** Messages whose author is not known yet. */
+  inbox: UnlinkedRecord[];
 }
 
 function initialDemo(): DemoData {
-  return { profiles: INITIAL_PROFILES, records: RAW_SOURCE_RECORDS, campaigns: [], logs: [], approved: [], threshold: 75 };
+  return { profiles: INITIAL_PROFILES, records: RAW_SOURCE_RECORDS, campaigns: [], logs: [], approved: [], threshold: 75, inbox: [] };
 }
 
 function loadDemo(): DemoData {
@@ -37,7 +46,7 @@ function loadDemo(): DemoData {
     const saved = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null') as DemoData | null;
     if (saved && Array.isArray(saved.profiles) && Array.isArray(saved.records) &&
       Array.isArray(saved.campaigns) && Array.isArray(saved.logs) && Array.isArray(saved.approved) &&
-      Number.isFinite(saved.threshold)) return saved;
+      Number.isFinite(saved.threshold)) return { ...saved, inbox: Array.isArray(saved.inbox) ? saved.inbox : [] };
   } catch {
     // The demo remains usable if storage is blocked or its contents are invalid.
   }
@@ -46,14 +55,18 @@ function loadDemo(): DemoData {
 
 export function App() {
   const [demo, setDemo] = useState(loadDemo);
-  const { profiles, records, campaigns, logs, threshold, approved } = demo;
+  const { profiles, records, campaigns, logs, threshold, approved, inbox } = demo;
   const manuallyApprovedIds = new Set(approved);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState<WorkflowTabId>('profiles');
+  const anchorRef = useRef<string | null>(null);
+  const [reviewNotice, setReviewNotice] = useState<ReviewNotice | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const [campaignPrompt, setCampaignPrompt] = useState(CAMPAIGN_PRESETS[0]);
   const [matches, setMatches] = useState<CampaignMatch[]>([]);
   const [didSegment, setDidSegment] = useState(false);
   const [segmentSource, setSegmentSource] = useState<'model' | 'local' | null>(null);
+  const [brief, setBrief] = useState<CampaignBrief | null>(null);
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
   const [inspectedProfileId, setInspectedProfileId] = useState<string | null>(null);
   const [isXRayOpen, setIsXRayOpen] = useState(false);
@@ -82,6 +95,21 @@ export function App() {
     }
   }, [isLoggedIn, activeTab]);
 
+  useEffect(() => {
+    const id = anchorRef.current;
+    anchorRef.current = null;
+    const target = id && isLoggedIn ? document.getElementById(id) : null;
+    if (target) {
+      target.scrollIntoView({ block: 'start' });
+      target.focus({ preventScroll: true });
+    }
+  }, [activeTab, isLoggedIn]);
+
+  function navigate(tab: WorkflowTabId, target?: string) {
+    anchorRef.current = target ?? null;
+    setActiveTab(tab);
+  }
+
   function notify(tone: ToastItem['tone'], title: string, detail?: string) {
     setToasts((items) => [...items.slice(-2), { id: crypto.randomUUID(), tone, title, detail }]);
   }
@@ -103,6 +131,8 @@ export function App() {
     clearMatches();
     setActiveCampaignId(null);
     setActiveTab('profiles');
+    setReviewNotice(null);
+    setReviewError(null);
     notify('info', 'เริ่มเดโมใหม่แล้ว');
   }
 
@@ -139,14 +169,35 @@ export function App() {
 
   function decideAttribute(profileId: string, attributeId: string, decision: 'verified' | 'rejected') {
     if (busy) return;
-    setDemo((current) => ({
-      ...current,
-      approved: decision === 'verified' ? [...new Set([...current.approved, attributeId])] : current.approved.filter((id) => id !== attributeId),
-      profiles: current.profiles.map((profile) => profile.id === profileId ? {
-        ...profile, attributes: profile.attributes.map((attribute) => attribute.id === attributeId ? { ...attribute, status: decision } : attribute),
-      } : profile),
-    }));
+    setDemo((current) => {
+      const next = applyReviewDecisions({ profiles: current.profiles, approved: current.approved }, [{ profileId, attributeId }], decision);
+      return { ...current, profiles: next.profiles, approved: next.approved };
+    });
     clearMatches();
+  }
+
+  /** Confirms or rejects one or many interests from the review queue and keeps what is needed to undo it. */
+  function decideReview(targets: ReviewTarget[], decision: 'verified' | 'rejected') {
+    if (busy) return;
+    const result = applyReviewDecisions({ profiles, approved }, targets, decision);
+    if (!result.snapshot.length) {
+      setReviewNotice(null);
+      setReviewError('ไม่พบรายการที่เลือก อาจถูกตรวจไปแล้ว');
+      return;
+    }
+    setDemo((current) => ({ ...current, profiles: result.profiles, approved: result.approved }));
+    setReviewError(null);
+    setReviewNotice({ decision, snapshot: result.snapshot });
+    clearMatches();
+  }
+
+  function undoReview() {
+    if (busy || !reviewNotice) return;
+    const restored = undoReviewDecisions({ profiles, approved }, reviewNotice.snapshot);
+    setDemo((current) => ({ ...current, profiles: restored.profiles, approved: restored.approved }));
+    setReviewNotice(null);
+    clearMatches();
+    notify('info', `เลิกทำแล้ว ${reviewNotice.snapshot.length} รายการ`, 'ความสนใจกลับไปรอตรวจเหมือนเดิม');
   }
 
   async function recommend(prompt: string) {
@@ -159,9 +210,10 @@ export function App() {
         attributes: profile.attributes.filter((attribute) =>
           getEffectiveAttributeStatus(attribute, threshold, manuallyApprovedIds) === 'verified'),
       }));
-      const result = await segmentCampaign(prompt, reviewedProfiles);
+      const activeBrief = brief && brief.prompt === prompt ? brief : null;
+      const result = await segmentCampaign(prompt, reviewedProfiles, activeBrief);
       setDemo((current) => ({ ...current, logs: [...result.logs, ...current.logs].slice(0, 60) }));
-      setMatches(result.matches);
+      setMatches(applyBriefToMatches(result.matches, activeBrief, profiles));
       setDidSegment(true);
       setSegmentSource(result.source);
     } catch {
@@ -191,8 +243,11 @@ export function App() {
     if (busy || !target || target.simulated) return;
     setOperation('simulate');
     try {
-      const result = await simulateCampaignResponses(id, target.name, target.matches, profiles);
-      const replies = buildReplySummaries(target, result.interactions);
+      // Replies the organiser pasted are real; only the remaining recipients are simulated.
+      const pasted = target.replies.filter((reply) => reply.origin === 'pasted');
+      const pastedIds = new Set(pasted.map((reply) => reply.profileId));
+      const result = await simulateCampaignResponses(id, target.name, target.matches.filter((match) => !pastedIds.has(match.profileId)), profiles);
+      const replies = [...pasted, ...buildReplySummaries(target, result.interactions)];
       setDemo((current) => ({
         ...current,
         profiles: result.profiles,
@@ -210,6 +265,41 @@ export function App() {
     }
   }
 
+  function loadSampleInbox() {
+    setDemo((current) => {
+      const have = new Set([...current.inbox.map((item) => item.id), ...current.records.map((item) => item.id)]);
+      const added = IDENTITY_CASES.filter((item) => !have.has(item.id)).map(({ id, source, handle, rawText, timestamp }) => ({ id, source, handle, rawText, timestamp }));
+      return added.length ? { ...current, inbox: [...current.inbox, ...added] } : current;
+    });
+  }
+
+  function confirmLink(recordId: string, profileId: string) {
+    if (busy) return;
+    const record = inbox.find((item) => item.id === recordId);
+    const linked = record && linkUnlinkedRecord(records, profiles, record, profileId);
+    if (!linked) return;
+    setDemo((current) => ({ ...current, records: linked.records, profiles: linked.profiles, inbox: current.inbox.filter((item) => item.id !== recordId) }));
+    clearMatches();
+    notify('info', 'ผูกข้อความกับเพื่อนแล้ว', 'กดรวมและสกัดข้อมูลเพื่ออ่านข้อความนี้เข้าโปรไฟล์');
+  }
+
+  function dismissInbox(recordId: string) {
+    setDemo((current) => ({ ...current, inbox: current.inbox.filter((item) => item.id !== recordId) }));
+  }
+
+  function savePastedReply(campaignId: string, reply: PastedReply) {
+    const target = campaigns.find((campaign) => campaign.id === campaignId);
+    const applied = target && applyPastedReply(target, profiles, reply, new Date().toISOString());
+    if (!applied) return;
+    setDemo((current) => ({
+      ...current,
+      profiles: applied.profiles,
+      campaigns: current.campaigns.map((campaign) => (campaign.id === campaignId ? applied.campaign : campaign)),
+    }));
+    clearMatches();
+    notify('success', 'บันทึกคำตอบจริงแล้ว', 'ยอดผลแคมเปญและโปรไฟล์อัปเดตแล้ว');
+  }
+
   const inspectedProfile = profiles.find((profile) => profile.id === inspectedProfileId) ?? null;
   const goToCampaign = () => setActiveTab('segment');
   const goToSources = () => setActiveTab('collect');
@@ -225,6 +315,8 @@ export function App() {
             <div className="workspace-content">
             <DemoAccountBanner activeTab={activeTab} friendCount={profiles.length} onTabChange={setActiveTab} />
             <motion.div key={activeTab} initial={{ y: 5 }} animate={{ y: 0 }} transition={{ duration: 0.18 }}>
+              {activeTab === 'overview' && <OverviewTab profiles={profiles} records={records} campaigns={campaigns} inbox={inbox} confidenceThreshold={threshold}
+                manuallyApprovedIds={manuallyApprovedIds} onNavigate={navigate} />}
               {activeTab === 'profiles' && <UnifiedProfilesTab profiles={profiles} confidenceThreshold={threshold} manuallyApprovedIds={manuallyApprovedIds}
                 onSelectProfile={setInspectedProfileId} onGoToSources={goToSources} onGoToCampaign={goToCampaign} />}
               {activeTab === 'collect' && <CollectUnifyTab profiles={profiles} records={records} busy={busy} isStitching={operation === 'stitch'} confidenceThreshold={threshold}
@@ -232,14 +324,18 @@ export function App() {
                   setDemo((current) => ({ ...current, threshold: value }));
                   clearMatches();
                 }}
-                onRunStitching={stitch} onAddSignal={addSignal} onInspectProfile={setInspectedProfileId} onGoToCampaign={goToCampaign} />}
+                onRunStitching={stitch} onAddSignal={addSignal} onInspectProfile={setInspectedProfileId} onGoToCampaign={goToCampaign}
+                inbox={inbox} onLoadSampleInbox={loadSampleInbox} onConfirmLink={confirmLink} onDismissInbox={dismissInbox}
+                manuallyApprovedIds={manuallyApprovedIds} reviewNotice={reviewNotice} reviewError={reviewError} onReviewDecide={decideReview}
+                onReviewUndo={undoReview} onReviewClear={() => { setReviewNotice(null); setReviewError(null); }} />}
               {activeTab === 'segment' && <CampaignSegmentTab profiles={profiles} records={records} confidenceThreshold={threshold} manuallyApprovedIds={manuallyApprovedIds}
-                segmentSource={segmentSource} onInspectProfile={setInspectedProfileId} campaignPrompt={campaignPrompt} matches={matches} busy={busy}
-                isSegmenting={operation === 'segment'} didSegment={didSegment} onPromptChange={(prompt) => { setCampaignPrompt(prompt); clearMatches(); }}
+                segmentSource={segmentSource} onInspectProfile={setInspectedProfileId} brief={brief} onBriefChange={setBrief} campaignPrompt={campaignPrompt} matches={matches} busy={busy}
+                isSegmenting={operation === 'segment'} didSegment={didSegment} onPromptChange={(prompt) => { setCampaignPrompt(prompt); setBrief(null); clearMatches(); }}
                 onMatchesChange={setMatches} onRunSegment={recommend} onLaunchCampaign={launch} onGoToSources={goToSources} />}
               {activeTab === 'analytics' && <AnalyticsLoopTab campaigns={campaigns} activeCampaignId={activeCampaignId} profiles={profiles} busy={busy}
                 isSimulating={operation === 'simulate'} onSelectCampaign={setActiveCampaignId} onSimulateReplies={simulate}
-                onGoToSegmentation={goToCampaign} onInspectProfile={setInspectedProfileId} />}
+                onGoToSegmentation={goToCampaign} onInspectProfile={setInspectedProfileId} onSaveReply={savePastedReply} />}
+              {activeTab === 'ai' && <AiPerformanceTab />}
             </motion.div>
             </div>
           </main>

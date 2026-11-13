@@ -8,7 +8,17 @@ export type CampaignInteractionStatus = 'accepted' | 'declined' | 'pending';
 
 export type CampaignMatchTier = 'direct' | 'lookalike';
 
-export type AiAction = 'stitch' | 'segment' | 'simulate_replies';
+export type AiAction =
+  | 'stitch'
+  | 'segment'
+  | 'simulate_replies'
+  | 'resolve_identity'
+  | 'extract_signal'
+  | 'classify_reply'
+  | 'parse_brief'
+  | 'check_invites'
+  | 'summarize_campaign'
+  | 'parse_search';
 
 export interface RawSourceRecord {
   id: string;
@@ -35,6 +45,8 @@ export interface CampaignInteraction {
   status: CampaignInteractionStatus;
   sentMessage: string;
   replyText?: string;
+  /** A condition or postponement the friend attached to the reply, for example "ขอเลื่อนเป็นสัปดาห์หน้า". */
+  note?: string;
   timestamp: string;
 }
 
@@ -84,9 +96,10 @@ export type AiProxyResponse<TData = unknown> =
       action: AiAction;
       model?: string;
       data: TData;
+      usage?: { inputTokens: number; outputTokens: number };
     };
 
-export type WorkflowTabId = 'collect' | 'profiles' | 'segment' | 'analytics';
+export type WorkflowTabId = 'overview' | 'collect' | 'profiles' | 'segment' | 'analytics' | 'ai';
 
 export interface CampaignReplySummary {
   profileId: string;
@@ -95,6 +108,9 @@ export interface CampaignReplySummary {
   tier: CampaignMatchTier;
   feedbackTag: string;
   feedbackCategory?: AttributeCategory;
+  note?: string;
+  /** simulated by the demo, or read from a reply the user pasted. */
+  origin?: 'simulated' | 'pasted';
 }
 
 export interface CampaignRecord {
@@ -105,4 +121,29 @@ export interface CampaignRecord {
   simulated: boolean;
   closedLoopUpdatesCount: number;
   replies: CampaignReplySummary[];
+}
+
+/** A message whose author is not known yet; the owner is proposed by the AI and confirmed by a person. */
+export interface UnlinkedRecord {
+  id: string;
+  source: DataSourceType;
+  handle: string;
+  rawText: string;
+  timestamp: string;
+}
+
+export type BriefConstraintKind = 'activity' | 'day' | 'time' | 'place' | 'budgetMax' | 'groupSize';
+
+export interface BriefConstraint {
+  kind: BriefConstraintKind;
+  value: string | number;
+  /** Verbatim part of the campaign description this constraint was read from. */
+  quote: string;
+}
+
+export interface CampaignBrief {
+  prompt: string;
+  constraints: BriefConstraint[];
+  clarifyingQuestion: string;
+  source: 'model' | 'local';
 }

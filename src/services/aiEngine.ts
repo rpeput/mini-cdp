@@ -1,8 +1,10 @@
 import { RAW_SOURCE_RECORDS } from '../data/seedData.ts';
+import { callAiRaw } from './aiClient.ts';
+import { markAiInvalid } from './aiMetrics.ts';
 import type {
   AiAction,
-  AiProxyResponse,
   AttributeCategory,
+  CampaignBrief,
   CampaignInteraction,
   CampaignMatch,
   ExtractedAttribute,
@@ -11,11 +13,10 @@ import type {
   UnifiedProfile,
 } from '../types/cdp.ts';
 
-const AI_PROXY_TIMEOUT_MS = 18_000;
-
 interface AiProxyResult<TData> {
   data: TData;
   model?: string;
+  metricId: string;
 }
 
 export interface StitchingResult {
@@ -86,7 +87,7 @@ interface SimulateRepliesApiPayload {
   }>;
 }
 
-interface ExtractionRule {
+export interface ExtractionRule {
   idSuffix: string;
   category: AttributeCategory;
   value: string;
@@ -111,7 +112,7 @@ const VALID_CATEGORIES = new Set<AttributeCategory>([
   'budget',
 ]);
 
-const EXTRACTION_RULES: ExtractionRule[] = [
+export const EXTRACTION_RULES: ExtractionRule[] = [
   {
     idSuffix: 'mookata',
     category: 'food',
@@ -402,35 +403,28 @@ async function callAiProxy<TData>(
   action: AiAction,
   payload: unknown,
 ): Promise<AiProxyResult<TData> | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_PROXY_TIMEOUT_MS);
+  const raw = await callAiRaw(action, payload);
+  return raw ? { data: raw.data as TData, model: raw.model, metricId: raw.metricId } : null;
+}
 
-  try {
-    const response = await fetch('/api/ai', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, payload }),
-      signal: controller.signal,
-    });
+export interface RuleSignal {
+  ruleId: string;
+  category: AttributeCategory;
+  value: string;
+  confidence: number;
+  evidenceQuote: string;
+}
 
-    if (!response.ok) {
-      return null;
-    }
-
-    const parsed = (await response.json()) as AiProxyResponse<TData>;
-    if (!parsed || parsed.fallback || !parsed.data) {
-      return null;
-    }
-
-    return {
-      data: parsed.data,
-      model: parsed.model,
-    };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
+/** Keyword baseline for one message: every matching rule is reported as an interest, with no reading of negation. */
+export function extractRuleSignals(text: string): RuleSignal[] {
+  const signals: RuleSignal[] = [];
+  for (const rule of EXTRACTION_RULES) {
+    if (!rule.patterns.some((pattern) => pattern.test(text))) continue;
+    const quote = (text.match(rule.quoteMatcher)?.[0] ?? text).trim();
+    if (!quote || !text.includes(quote)) continue;
+    signals.push({ ruleId: rule.idSuffix, category: rule.category, value: rule.value, confidence: rule.confidence, evidenceQuote: quote });
   }
+  return signals;
 }
 
 function extractLocalAttributesForProfile(
@@ -848,6 +842,7 @@ export function parseSegmentMatches(
 export async function segmentCampaign(
   campaignPrompt: string,
   profiles: UnifiedProfile[],
+  brief: CampaignBrief | null = null,
 ): Promise<SegmentationResult> {
   const startedAt = performance.now();
   const normalizedPrompt = campaignPrompt.trim();
@@ -879,6 +874,7 @@ export async function segmentCampaign(
 
   const remoteResult = await callAiProxy<SegmentApiPayload>('segment', {
     campaignPrompt: normalizedPrompt,
+    constraints: brief?.constraints ?? [],
     profiles: eligibleProfiles.map((p) => ({
       id: p.id,
       nickname: p.nickname,
@@ -896,6 +892,9 @@ export async function segmentCampaign(
   let usedFallback = true;
 
   const parsedRemote = parseSegmentMatches(remotePayload, eligibleMap, normalizedPrompt);
+  if (remoteResult && !parsedRemote) {
+    markAiInvalid(remoteResult.metricId);
+  }
   if (parsedRemote) {
     // A well-formed answer is authoritative, including an empty list: nobody fits this activity.
     matches = parsedRemote;

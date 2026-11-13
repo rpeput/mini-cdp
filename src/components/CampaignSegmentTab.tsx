@@ -1,8 +1,11 @@
-import { ArrowRight, ChevronDown, Quote, Radio, Send, ShieldCheck, Sparkles, Users } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, ChevronDown, Quote, Radio, Send, ShieldCheck, Sparkles, Users } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useState } from 'react';
 import { CAMPAIGN_PRESETS } from '../data/seedData.ts';
-import type { CampaignMatch, RawSourceRecord, UnifiedProfile } from '../types/cdp.ts';
+import { parseBriefWithRules } from '../services/ai/brief.ts';
+import { checkInvites, type InviteCheck } from '../services/ai/inviteCheck.ts';
+import type { CampaignBrief, CampaignMatch, RawSourceRecord, UnifiedProfile } from '../types/cdp.ts';
+import { BriefPanel } from './BriefPanel.tsx';
 import { RecommendationEvidenceDrawer } from './RecommendationEvidenceDrawer.tsx';
 
 interface CampaignSegmentTabProps {
@@ -12,6 +15,8 @@ interface CampaignSegmentTabProps {
   manuallyApprovedIds: ReadonlySet<string>;
   segmentSource: 'model' | 'local' | null;
   onInspectProfile: (id: string) => void;
+  brief: CampaignBrief | null;
+  onBriefChange: (brief: CampaignBrief | null) => void;
   campaignPrompt: string;
   onPromptChange: (prompt: string) => void;
   matches: CampaignMatch[];
@@ -26,9 +31,13 @@ interface CampaignSegmentTabProps {
 
 const presetNames = ['หมูกระทะ', 'เดินป่า', 'เที่ยวทะเล', 'แฮงเอาท์'];
 
-export function CampaignSegmentTab({ profiles, records, confidenceThreshold, manuallyApprovedIds, segmentSource, onInspectProfile, campaignPrompt, onPromptChange, matches, onMatchesChange, busy, isSegmenting, didSegment, onRunSegment, onLaunchCampaign, onGoToSources }: CampaignSegmentTabProps) {
+export function CampaignSegmentTab({ profiles, records, confidenceThreshold, manuallyApprovedIds, segmentSource, onInspectProfile, brief, onBriefChange, campaignPrompt, onPromptChange, matches, onMatchesChange, busy, isSegmenting, didSegment, onRunSegment, onLaunchCampaign, onGoToSources }: CampaignSegmentTabProps) {
   const [tier, setTier] = useState('all');
   const [whyProfileId, setWhyProfileId] = useState<string | null>(null);
+  // A check belongs to the exact invitation text it read, so editing an invitation discards its result.
+  const [checks, setChecks] = useState<Record<string, { text: string; check: InviteCheck }>>({});
+  const [checkSource, setCheckSource] = useState<'model' | 'rules' | null>(null);
+  const [checking, setChecking] = useState(false);
   const ready = profiles.filter((profile) => profile.isStitched && profile.consentPdpa).length;
   const pending = profiles.filter((profile) => !profile.isStitched).length;
   const selected = matches.filter((match) => match.selected);
@@ -37,6 +46,22 @@ export function CampaignSegmentTab({ profiles, records, confidenceThreshold, man
   const sourceLabel = segmentSource === 'model' ? 'ค้นหาด้วยโมเดล' : 'ค้นหาด้วยกฎในเครื่อง';
   const whyMatch = matches.find((match) => match.profileId === whyProfileId) ?? null;
   const whyProfile = profiles.find((profile) => profile.id === whyProfileId) ?? null;
+  const checkFor = (match: CampaignMatch) => (checks[match.profileId]?.text === match.personalizedInvite ? checks[match.profileId].check : null);
+  const checked = selected.map(checkFor).filter((item): item is InviteCheck => item !== null);
+  const flagged = checked.filter((item) => !item.ok).length;
+
+  async function runCheck() {
+    if (checking || !selected.length || hasBlankInvite) return;
+    setChecking(true);
+    try {
+      const activeBrief = brief && brief.prompt === campaignPrompt.trim() ? brief : parseBriefWithRules(campaignPrompt.trim());
+      const result = await checkInvites(selected.map((match) => ({ profileId: match.profileId, nickname: profiles.find((item) => item.id === match.profileId)?.nickname ?? '', text: match.personalizedInvite })), activeBrief);
+      setChecks(Object.fromEntries(result.checks.map((check) => [check.profileId, { text: selected.find((match) => match.profileId === check.profileId)?.personalizedInvite ?? '', check }])));
+      setCheckSource(result.source);
+    } finally {
+      setChecking(false);
+    }
+  }
   const updateMatch = (id: string, update: Partial<CampaignMatch>) => {
     onMatchesChange(matches.map((match) => match.profileId === id ? { ...match, ...update } : match));
   };
@@ -69,6 +94,7 @@ export function CampaignSegmentTab({ profiles, records, confidenceThreshold, man
                 <button key={preset} type="button" className="button button-light preset" aria-pressed={campaignPrompt === preset} disabled={busy} onClick={() => onPromptChange(preset)}>{presetNames[index]}</button>
               ))}
             </div>
+            <BriefPanel prompt={campaignPrompt} brief={brief} disabled={busy} onBriefChange={onBriefChange} />
             <button className="button button-primary" type="submit" disabled={busy || !campaignPrompt.trim() || !ready}><Sparkles size={17} aria-hidden="true" /> {isSegmenting ? 'กำลังค้นหาเพื่อน…' : 'แนะนำผู้รับคำเชิญ'}</button>
           </form>
           <div className="surface">
@@ -96,6 +122,13 @@ export function CampaignSegmentTab({ profiles, records, confidenceThreshold, man
                       <summary><ChevronDown size={16} aria-hidden="true" /> ดูหรือแก้คำเชิญ <span className="sr-only">ของ {profile.nickname}</span></summary>
                       <label className="field">ข้อความถึง {profile.nickname}<textarea rows={2} maxLength={500} disabled={busy} value={match.personalizedInvite} onChange={(event) => updateMatch(match.profileId, { personalizedInvite: event.target.value })} /></label>
                     </details>
+                    {match.selected && checkFor(match) && (
+                      checkFor(match)?.ok
+                        ? <p className="invite-ok"><Check size={14} aria-hidden="true" /> คำเชิญผ่านการตรวจ</p>
+                        : <ul className="invite-problems">{checkFor(match)?.problems.map((problem, index) => (
+                            <li key={index}><AlertTriangle size={14} aria-hidden="true" /> {problem.explanation}{problem.quote && !problem.explanation.includes(problem.quote) && <> · “<mark>{problem.quote}</mark>”</>}</li>
+                          ))}</ul>
+                    )}
                   </motion.li>
                 );
               })}</ul>
@@ -113,6 +146,12 @@ export function CampaignSegmentTab({ profiles, records, confidenceThreshold, man
           <h2>สรุปคำเชิญ</h2>
           <p>ส่งข้อความจำลองผ่าน LINE ให้เฉพาะเพื่อนที่คุณเลือก</p>
           <dl><div><dt>ช่องทาง</dt><dd lang="en">LINE · Demo</dd></div><div><dt>ผู้รับที่เลือก</dt><dd>{selected.length} คน</dd></div></dl>
+          <button className="button button-light" disabled={busy || checking || !selected.length || hasBlankInvite} onClick={runCheck}><Sparkles size={16} aria-hidden="true" /> {checking ? 'กำลังตรวจคำเชิญ…' : 'ตรวจคำเชิญด้วย AI'}</button>
+          {checked.length > 0 && (
+            <p className="summary-hint" role="status">
+              {checkSource === 'model' ? 'ตรวจโดยโมเดล' : 'ตรวจด้วยกฎในเครื่อง'}: ผ่าน {checked.length - flagged} · มีข้อสังเกต {flagged}{flagged > 0 ? ' ดูใต้คำเชิญของแต่ละคน ส่งต่อได้หากเห็นว่าไม่เป็นปัญหา' : ''}
+            </p>
+          )}
           <button className="button button-primary" disabled={busy || !selected.length || hasBlankInvite} onClick={() => onLaunchCampaign(campaignPrompt.trim(), matches)}>ส่งคำเชิญจำลอง <ArrowRight size={17} aria-hidden="true" /></button>
           <p className="summary-hint">{hasBlankInvite ? 'กรอกข้อความให้ครบสำหรับผู้รับที่เลือก' : 'หลังส่งแล้ว ดูสถานะของแต่ละคนได้ที่ผลแคมเปญ'}</p>
         </aside>
