@@ -754,8 +754,10 @@ function buildPersonalizedInvite(
   tier: 'direct' | 'lookalike',
 ): string {
   const topic = campaignPrompt.trim() || 'ตี้เพื่อนภาคคอมฯ รอบนี้';
+  // A trait label reads "หัวข้อ / รายละเอียด"; the slash is for the profile, so a sentence uses only the topic.
+  const trait = matchedTrait.split('/')[0].trim() || matchedTrait;
   if (tier === 'direct') {
-    return `${profile.nickname} เรามีกิจกรรม “${topic}” เห็นว่าน่าจะตรงกับความสนใจเรื่อง${matchedTrait} สนใจไปด้วยกันไหม?`;
+    return `${profile.nickname} เรามีกิจกรรม “${topic}” เห็นว่าน่าจะตรงกับความสนใจเรื่อง${trait} สนใจไปด้วยกันไหม?`;
   }
 
   return `${profile.nickname} สนใจกิจกรรม “${topic}” ไหม? ถ้าสนใจเดี๋ยวส่งรายละเอียดให้นะ`;
