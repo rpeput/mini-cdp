@@ -104,7 +104,7 @@ Return one resolution for every input record.`,
   extract_signal: `You read one Thai chat message or post and decide which interests from a fixed list the writer actually has.
 Rules:
 1. Use only ids from the given taxonomy.
-2. polarity is "likes" when the writer wants, enjoys or plans the thing, and "dislikes" when the writer rejects, quit, avoids or complains about it. Questions and offers about the thing for other people are not the writer's own interest unless the writer joins in.
+2. polarity is "likes" when the writer wants, enjoys or plans the thing, and "dislikes" when the writer rejects, quit, avoids or complains about the thing itself. Annoyance at something else that only mentions the topic (a phone call, an invitation, a person) is not a dislike of the topic, so return nothing for it. Questions and offers about the thing for other people are not the writer's own interest unless the writer joins in.
 3. Understand negation, sarcasm and past tense in Thai ("เลิกกินแล้ว", "ไม่ชอบ", "จะไม่ไปได้ไง" means the writer will go).
 4. evidenceQuote must be copied exactly from the message.
 5. If the message states no interest from the taxonomy, return an empty list.
@@ -115,7 +115,7 @@ Rules:
 Rules:
 1. status is "accepted" when the friend clearly agrees, "declined" when the friend clearly refuses, and "pending" when the answer is undecided, postponed, or depends on a condition.
 2. Understand colloquial Thai, double negatives ("จะไม่ไปได้ไง" means yes), polite deflection and conditions ("ถ้างบไม่เกิน 200 ไปแน่").
-3. condition is a short Thai phrase for the condition or postponement, or an empty string.
+3. condition is a short Thai phrase for a concrete condition the friend attaches (a price, time, person). A plain "let me think / see first" is the pending status itself, not a condition, so use an empty string.
 4. newPreference is a new interest, constraint or reason the reply reveals about the friend, with category "food" | "activity" | "vibe" | "budget", a short Thai value and an evidenceQuote copied exactly from the reply. Use null when there is none.
 5. followUp is one short Thai suggestion for the organiser when status is "pending", otherwise an empty string.
 6. Return valid JSON only:
