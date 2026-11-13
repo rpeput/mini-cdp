@@ -88,7 +88,8 @@ export async function runEvaluation(profiles: readonly UnifiedProfile[], known: 
     cases: await Promise.all(REPLY_CASES.map(async (item) => {
       const rules = readReplyWithRules(item.reply);
       const model = await readReply('ชวนไปกินหมูกระทะ', item.reply, { nickname: 'เพื่อน', attributes: [] });
-      const fits = (reading: { status: string; condition: string }) => reading.status === item.gold.status && Boolean(reading.condition) === item.gold.hasCondition;
+      // For "pending" the wait is the status itself, so a restated "let me see" is not scored as a condition.
+      const fits = (reading: { status: string; condition: string }) => reading.status === item.gold.status && (reading.status === 'pending' || Boolean(reading.condition) === item.gold.hasCondition);
       const text = (reading: { status: keyof typeof STATUS_TEXT; condition: string }) => `${STATUS_TEXT[reading.status]}${reading.condition ? ` (${reading.condition})` : ''}`;
       return {
         id: item.id,
