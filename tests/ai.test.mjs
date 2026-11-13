@@ -156,6 +156,9 @@ test('a reply reading keeps a preference only when its quote is in the reply', (
   const base = { status: 'pending', confidence: 86, condition: 'ถ้างบไม่เกิน 200', reason: 'มีเงื่อนไข', followUp: 'ยืนยันงบ', newPreference: { category: 'budget', value: 'งบประหยัด', evidenceQuote: 'งบตึง' } };
   const kept = parseReplyReading(base, reply);
   assert.equal(kept.status, 'pending');
+  assert.equal(kept.condition, 'ถ้างบไม่เกิน 200');
+  assert.equal(parseReplyReading({ ...base, condition: 'เดี๋ยวดูก่อนนะ', newPreference: null }, 'เดี๋ยวดูก่อนนะ').condition, '');
+  assert.equal(parseReplyReading({ ...base, condition: 'ขอเลื่อนเป็นสัปดาห์หน้า', newPreference: null }, 'ไปได้แต่ขอเลื่อนเป็นสัปดาห์หน้า').condition, 'ขอเลื่อนเป็นสัปดาห์หน้า');
   assert.equal(kept.newPreference.evidenceQuote, 'งบตึง');
   const invented = parseReplyReading({ ...base, newPreference: { ...base.newPreference, evidenceQuote: 'ไม่มีเงิน' } }, reply);
   assert.equal(invented.newPreference, null);
@@ -373,7 +376,7 @@ test('a model that matches the gold answers scores full marks and the evaluation
     }
     if (action === 'classify_reply') {
       const gold = REPLY_CASES.find((item) => item.reply === payload.reply).gold;
-      return { status: gold.status, confidence: 90, condition: gold.hasCondition ? 'มีเงื่อนไข' : '', reason: 'ตามเฉลย', newPreference: null, followUp: '' };
+      return { status: gold.status, confidence: 90, condition: payload.reply === 'เดี๋ยวดูก่อนนะ' ? payload.reply : gold.hasCondition ? 'มีเงื่อนไข' : '', reason: 'ตามเฉลย', newPreference: null, followUp: '' };
     }
     const gold = SIGNAL_CASES.find((item) => item.text === payload.text).gold;
     return { interests: [

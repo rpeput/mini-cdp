@@ -46,6 +46,12 @@ export function readReplyWithRules(reply: string): ReplyReading {
   };
 }
 
+/** A "condition" that only repeats the whole reply ("let me think") is the pending status itself, not a condition. */
+function restatesReply(condition: string, reply: string): boolean {
+  const flat = (text: string) => text.replace(/[\s.!?…ๆ]+/g, '');
+  return flat(condition) !== '' && flat(condition) === flat(reply);
+}
+
 export function parseReplyReading(raw: unknown, reply: string): ReplyReading | null {
   if (!isObject(raw) || !isString(raw.status) || !STATUSES.has(raw.status)) return null;
   const confidence = asInt(raw.confidence, 0, 100);
@@ -62,7 +68,7 @@ export function parseReplyReading(raw: unknown, reply: string): ReplyReading | n
   return {
     status: raw.status as CampaignInteractionStatus,
     confidence,
-    condition: stripEmoji(raw.condition).slice(0, 80),
+    condition: restatesReply(raw.condition, reply) ? '' : stripEmoji(raw.condition).slice(0, 80),
     reason: stripEmoji(raw.reason).slice(0, 160),
     newPreference,
     followUp: stripEmoji(raw.followUp).slice(0, 160),
