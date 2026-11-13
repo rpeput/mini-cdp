@@ -1,11 +1,13 @@
 import { AlertTriangle, ArrowRight, Check, ChevronDown, Quote, Radio, Send, ShieldCheck, Sparkles, Users } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { useState } from 'react';
 import { CAMPAIGN_PRESETS } from '../data/seedData.ts';
 import { parseBriefWithRules } from '../services/ai/brief.ts';
 import { checkInvites, type InviteCheck } from '../services/ai/inviteCheck.ts';
 import type { CampaignBrief, CampaignMatch, RawSourceRecord, UnifiedProfile } from '../types/cdp.ts';
+import { staggerDelay } from '../utils/motionSequence.ts';
 import { BriefPanel } from './BriefPanel.tsx';
+import { ScoreMeter, Tick } from './MotionBits.tsx';
 import { RecommendationEvidenceDrawer } from './RecommendationEvidenceDrawer.tsx';
 
 interface CampaignSegmentTabProps {
@@ -27,11 +29,17 @@ interface CampaignSegmentTabProps {
   onRunSegment: (prompt: string) => void;
   onLaunchCampaign: (name: string, matches: CampaignMatch[]) => void;
   onGoToSources: () => void;
+  /** Changes each time recommendations were produced. */
+  runId: number;
 }
 
 const presetNames = ['หมูกระทะ', 'เดินป่า', 'เที่ยวทะเล', 'แฮงเอาท์'];
 
-export function CampaignSegmentTab({ profiles, records, confidenceThreshold, manuallyApprovedIds, segmentSource, onInspectProfile, brief, onBriefChange, campaignPrompt, onPromptChange, matches, onMatchesChange, busy, isSegmenting, didSegment, onRunSegment, onLaunchCampaign, onGoToSources }: CampaignSegmentTabProps) {
+export function CampaignSegmentTab({ profiles, records, confidenceThreshold, manuallyApprovedIds, segmentSource, onInspectProfile, brief, onBriefChange, campaignPrompt, onPromptChange, matches, onMatchesChange, busy, isSegmenting, didSegment, onRunSegment, onLaunchCampaign, onGoToSources, runId }: CampaignSegmentTabProps) {
+  const reduced = useReducedMotion();
+  // Rows play in only for a run that finished while this page was open; coming back shows the list as it is.
+  const [mountedRun] = useState(runId);
+  const playIn = runId !== mountedRun && !reduced;
   const [tier, setTier] = useState('all');
   const [whyProfileId, setWhyProfileId] = useState<string | null>(null);
   // A check belongs to the exact invitation text it read, so editing an invitation discards its result.
@@ -99,22 +107,23 @@ export function CampaignSegmentTab({ profiles, records, confidenceThreshold, man
           </form>
           <div className="surface">
             <div className="table-toolbar">
-              <div><h2>เพื่อนที่ระบบแนะนำ</h2><p role="status">{isSegmenting ? 'กำลังเทียบกิจกรรมกับความสนใจ…' : matches.length ? `พบ ${matches.length} คน · เลือกแล้ว ${selected.length} คน · ${sourceLabel}` : didSegment ? `ไม่พบผู้รับ · ${sourceLabel}` : 'แนะนำจากโปรไฟล์ที่รวมข้อมูลแล้วและยินยอมรับคำเชิญ'}</p></div>
+              <div><h2>เพื่อนที่ระบบแนะนำ</h2><p role="status">{isSegmenting ? 'กำลังเทียบกิจกรรมกับความสนใจ…' : matches.length ? <>พบ {matches.length} คน · เลือกแล้ว <Tick value={selected.length} /> คน · {sourceLabel}</> : didSegment ? `ไม่พบผู้รับ · ${sourceLabel}` : 'แนะนำจากโปรไฟล์ที่รวมข้อมูลแล้วและยินยอมรับคำเชิญ'}</p></div>
               {matches.length > 0 && <label><span className="sr-only">กรองประเภทผู้รับ</span><select value={tier} onChange={(event) => setTier(event.target.value)}><option value="all">ทุกประเภท</option><option value="direct">ตรงความสนใจ</option><option value="lookalike">ความสนใจใกล้เคียง</option></select></label>}
             </div>
             {visible.length ? (
-              <ul className="match-list">{visible.map((match) => {
+              <ul className="match-list">{visible.map((match, index) => {
                 const profile = profiles.find((item) => item.id === match.profileId);
                 if (!profile) return null;
                 return (
-                  <motion.li key={match.profileId} initial={{ y: 4 }} animate={{ y: 0 }} transition={{ duration: 0.2 }}>
+                  <motion.li key={match.profileId} layout="position" initial={playIn ? { opacity: 0, y: 6 } : false} animate={{ opacity: 1, y: 0 }}
+                    transition={{ default: { duration: 0.2, delay: playIn ? staggerDelay(index) / 1000 : 0, ease: 'easeOut' }, layout: { duration: 0.22, ease: 'easeOut' } }}>
                     <div className="match-heading">
                       <label className="recipient-choice">
                         <input type="checkbox" checked={match.selected} disabled={busy} onChange={(event) => updateMatch(match.profileId, { selected: event.target.checked })} />
                         <span className="person-avatar" aria-hidden="true">{profile.avatarInitials}</span>
                         <span><strong>{profile.nickname}</strong><small>{profile.fullName}</small></span>
                       </label>
-                      <div className="chip-list"><span className={`chip ${match.tier === 'direct' ? 'chip-positive' : ''}`}>{match.tier === 'direct' ? 'ตรงความสนใจ' : 'ความสนใจใกล้เคียง'}</span><span className="match-score">{match.matchScore}%</span></div>
+                      <div className="chip-list"><span className={`chip ${match.tier === 'direct' ? 'chip-positive' : ''}`}>{match.tier === 'direct' ? 'ตรงความสนใจ' : 'ความสนใจใกล้เคียง'}</span><ScoreMeter score={match.matchScore} animateIn={playIn} delay={playIn ? staggerDelay(index) / 1000 + 0.05 : 0} /></div>
                     </div>
                     <p>{match.aiReasoning}</p>
                     <button type="button" className="text-button" aria-haspopup="dialog" onClick={() => setWhyProfileId(match.profileId)}><Quote size={15} aria-hidden="true" /> ทำไมแนะนำคนนี้ <span className="sr-only">ของ {profile.nickname}</span></button>
@@ -145,7 +154,7 @@ export function CampaignSegmentTab({ profiles, records, confidenceThreshold, man
           <span className="summary-icon"><Send size={20} aria-hidden="true" /></span>
           <h2>สรุปคำเชิญ</h2>
           <p>ส่งข้อความจำลองผ่าน LINE ให้เฉพาะเพื่อนที่คุณเลือก</p>
-          <dl><div><dt>ช่องทาง</dt><dd lang="en">LINE · Demo</dd></div><div><dt>ผู้รับที่เลือก</dt><dd>{selected.length} คน</dd></div></dl>
+          <dl><div><dt>ช่องทาง</dt><dd lang="en">LINE · Demo</dd></div><div><dt>ผู้รับที่เลือก</dt><dd><Tick value={selected.length} /> คน</dd></div></dl>
           <button className="button button-light" disabled={busy || checking || !selected.length || hasBlankInvite} onClick={runCheck}><Sparkles size={16} aria-hidden="true" /> {checking ? 'กำลังตรวจคำเชิญ…' : 'ตรวจคำเชิญด้วย AI'}</button>
           {checked.length > 0 && (
             <p className="summary-hint" role="status">

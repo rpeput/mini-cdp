@@ -1,6 +1,6 @@
-import { animate, motion, useReducedMotion } from 'motion/react';
+import { motion } from 'motion/react';
 import { CheckCircle2, ClipboardCheck, Database, MessageSquareText, Radio, SquareActivity, Users } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { CountUp } from './CountUp.tsx';
 import type { CampaignRecord, RawSourceRecord, UnifiedProfile, UnlinkedRecord, WorkflowTabId } from '../types/cdp.ts';
 import { summarizeCampaign } from '../utils/campaignFlow.ts';
 import { buildFunnel, buildNextActions, countVerifiedInterests, type NextAction } from '../utils/overview.ts';
@@ -22,23 +22,6 @@ const actionIcons: Record<NextAction['id'], typeof Users> = {
   inbox: MessageSquareText,
   replies: SquareActivity,
 };
-
-/** Counts up from 0 once when the page opens; the final number is always in the text. */
-function CountUp({ value }: { value: number }) {
-  const reduced = useReducedMotion();
-  const [shown, setShown] = useState(reduced ? value : 0);
-  const first = useRef(true);
-  useEffect(() => {
-    if (reduced || !first.current) {
-      setShown(value);
-      return;
-    }
-    first.current = false;
-    const controls = animate(0, value, { duration: 0.3, ease: 'easeOut', onUpdate: (latest) => setShown(Math.round(latest)) });
-    return () => controls.stop();
-  }, [value, reduced]);
-  return <span aria-label={String(value)}>{shown}</span>;
-}
 
 export function OverviewTab({ profiles, records, campaigns, inbox, confidenceThreshold, manuallyApprovedIds, onNavigate }: OverviewTabProps) {
   const actions = buildNextActions({ profiles, campaigns, inbox, confidenceThreshold, manuallyApprovedIds });

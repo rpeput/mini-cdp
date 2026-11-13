@@ -1,3 +1,4 @@
+import './motion.test.mjs';
 import './overview.test.mjs';
 import './ai.test.mjs';
 import assert from 'node:assert/strict';

@@ -133,3 +133,46 @@ test('interest mix counts only confirmed interests on combined profiles', () => 
   assert.ok(higher <= verified.length);
   assert.equal(countVerifiedInterests(INITIAL_PROFILES.map((p) => ({ ...p, isStitched: false })), 75, noApprovals).reduce((s, x) => s + x.count, 0), 0);
 });
+
+test('landing numbers, recipients and exclusions match a real run of the local engine', async (context) => {
+  context.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ fallback: true })));
+  const { CAMPAIGN_PRESETS, RAW_SOURCE_RECORDS: records } = await import('../src/data/seedData.ts');
+  const { runIdentityStitching, segmentCampaign, simulateCampaignResponses } = await import('../src/services/aiEngine.ts');
+  const { buildReplySummaries, createCampaign } = await import('../src/utils/campaignFlow.ts');
+  const { LANDING_EXCLUDED, LANDING_MISREADS, LANDING_NUMBERS, LANDING_OUTCOME, LANDING_RECIPIENTS, LANDING_SCENARIOS } = await import('../src/data/landingDemo.ts');
+  const { buildDemoNumbers } = await import('../src/utils/demoNumbers.ts');
+
+  const combined = await runIdentityStitching(INITIAL_PROFILES, records);
+  const { matches } = await segmentCampaign(CAMPAIGN_PRESETS[0], combined.profiles);
+  const made = createCampaign('landing', 'x', '2026-01-01T00:00:00Z', matches, combined.profiles);
+  const { interactions } = await simulateCampaignResponses('landing', CAMPAIGN_PRESETS[0], made.matches, combined.profiles);
+  made.replies = buildReplySummaries(made, interactions);
+  assert.deepEqual(LANDING_OUTCOME, summarizeCampaign(made));
+
+  assert.equal(LANDING_NUMBERS.messages, records.length);
+  assert.equal(LANDING_NUMBERS.profiles, combined.profiles.length);
+  assert.equal(LANDING_NUMBERS.sent, made.matches.length);
+  assert.equal(LANDING_NUMBERS.notConsented, 1);
+  assert.deepEqual(buildDemoNumbers([], [], { sent: 2, accepted: 1, declined: 0, pending: 1 }), { messages: 0, profiles: 0, sent: 2, accepted: 1, notConsented: 0 });
+
+  for (const item of LANDING_RECIPIENTS) {
+    const match = matches.find((entry) => entry.profileId === item.profile.id);
+    assert.ok(match && match.selected && match.tier === 'direct', item.profile.nickname);
+    assert.equal(match.matchScore, item.score);
+    assert.ok(item.record.rawText.includes(item.term));
+  }
+
+  // The friend who did not agree is never a recipient, for any activity the page offers.
+  for (const scenario of LANDING_SCENARIOS) {
+    const result = await segmentCampaign(scenario.prompt, combined.profiles);
+    assert.ok(result.matches.every((match) => match.profileId !== LANDING_EXCLUDED.profile.id), scenario.id);
+    if (scenario.id === 'none') assert.equal(result.matches.length, 0);
+  }
+  assert.equal(LANDING_EXCLUDED.profile.consentPdpa, false);
+
+  // The keyword rules call every hit a "like"; the fixtures say otherwise for these messages.
+  for (const item of LANDING_MISREADS) {
+    assert.ok(item.rules.length > 0 && item.rules.every((line) => line.startsWith('ชอบ')));
+    assert.notDeepEqual(item.rules, item.answer, item.id);
+  }
+});

@@ -20,6 +20,7 @@ import { applyBriefToMatches } from './services/ai/brief.ts';
 import type { CampaignBrief, CampaignMatch, CampaignRecord, DataSourceType, PipelineLog, RawSourceRecord, UnifiedProfile, UnlinkedRecord, WorkflowTabId } from './types/cdp.ts';
 import { applyPastedReply, linkUnlinkedRecord, type PastedReply } from './utils/aiActions.ts';
 import { buildReplySummaries, createCampaign, recordSentInvitations } from './utils/campaignFlow.ts';
+import { buildStitchFx, type StitchFx } from './utils/motionSequence.ts';
 import { getEffectiveAttributeStatus } from './utils/cdpHelpers.ts';
 import { applyReviewDecisions, undoReviewDecisions, type ReviewTarget } from './utils/reviewQueue.ts';
 import './App.css';
@@ -73,6 +74,12 @@ export function App() {
   const [operation, setOperation] = useState<'stitch' | 'segment' | 'simulate' | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const mainRef = useRef<HTMLElement>(null);
+  // Presentation-only: what the last run changed, so the screens can show it. The data above is already final.
+  const [stitchFx, setStitchFx] = useState<StitchFx | null>(null);
+  const [matchRun, setMatchRun] = useState(0);
+  const [launchFx, setLaunchFx] = useState<{ campaignId: string; played: boolean } | null>(null);
+  const [simulateRun, setSimulateRun] = useState<{ n: number; campaignId: string | null }>({ n: 0, campaignId: null });
+  const fxCounter = useRef(0);
   const entered = useRef(false);
   const busy = operation !== null;
 
@@ -105,6 +112,13 @@ export function App() {
     }
   }, [activeTab, isLoggedIn]);
 
+  // New interests are highlighted on the sources and friends pages only; leaving them ends the highlight.
+  const [fxTab, setFxTab] = useState(activeTab);
+  if (fxTab !== activeTab) {
+    setFxTab(activeTab);
+    if (activeTab !== 'collect' && activeTab !== 'profiles') setStitchFx(null);
+  }
+
   function navigate(tab: WorkflowTabId, target?: string) {
     anchorRef.current = target ?? null;
     setActiveTab(tab);
@@ -127,6 +141,8 @@ export function App() {
   function resetDemo() {
     if (busy || !window.confirm('เริ่มเดโมใหม่และล้างข้อมูลที่คุณเพิ่มกับผลแคมเปญในแท็บนี้?')) return;
     setDemo(initialDemo());
+    setStitchFx(null);
+    setLaunchFx(null);
     setCampaignPrompt(CAMPAIGN_PRESETS[0]);
     clearMatches();
     setActiveCampaignId(null);
@@ -149,6 +165,7 @@ export function App() {
       profiles: current.profiles.map((item) => item.id === profileId ? { ...item, isStitched: false } : item),
     }));
     clearMatches();
+    setStitchFx(null);
     notify('info', 'เพิ่มข้อความเข้าคิวแล้ว', 'กดรวมและสกัดข้อมูลเพื่อตรวจว่าพบความสนใจอะไร');
   }
 
@@ -159,6 +176,7 @@ export function App() {
       const result = await runIdentityStitching(profiles, records);
       setDemo((current) => ({ ...current, profiles: result.profiles, logs: [...result.logs, ...current.logs].slice(0, 60) }));
       clearMatches();
+      setStitchFx(buildStitchFx(++fxCounter.current, profiles, result.profiles, records));
       notify('success', `รวมข้อมูลแล้ว ${result.stitchedCount} โปรไฟล์`, result.usedFallback ? 'สกัดด้วยกฎจากข้อความตัวอย่าง' : 'ตรวจข้อความอ้างอิงจากผลวิเคราะห์ AI แล้ว');
     } catch {
       notify('warning', 'รวมข้อมูลไม่สำเร็จ', 'ข้อมูลยังอยู่ในคิว ลองกดประมวลผลอีกครั้ง');
@@ -215,6 +233,7 @@ export function App() {
       setDemo((current) => ({ ...current, logs: [...result.logs, ...current.logs].slice(0, 60) }));
       setMatches(applyBriefToMatches(result.matches, activeBrief, profiles));
       setDidSegment(true);
+      setMatchRun((n) => n + 1);
       setSegmentSource(result.source);
     } catch {
       notify('warning', 'ค้นหาผู้รับไม่สำเร็จ', 'ลองกดแนะนำผู้รับคำเชิญอีกครั้ง');
@@ -233,6 +252,7 @@ export function App() {
       profiles: recordSentInvitations(current.profiles, campaign),
     }));
     setActiveCampaignId(campaign.id);
+    setLaunchFx({ campaignId: campaign.id, played: false });
     setActiveTab('analytics');
     clearMatches();
     notify('success', `ส่งคำเชิญจำลองแล้ว ${campaign.matches.length} คน`, 'กดจำลองคำตอบเพื่อดูผลตอบกลับ');
@@ -257,6 +277,7 @@ export function App() {
           closedLoopUpdatesCount: replies.filter((reply) => reply.status !== 'pending').length,
         } : campaign),
       }));
+      setSimulateRun((current) => ({ n: current.n + 1, campaignId: id }));
       clearMatches();
     } catch {
       notify('warning', 'จำลองคำตอบไม่สำเร็จ', 'สถานะคำเชิญเดิมยังอยู่ ลองอีกครั้งได้');
@@ -314,12 +335,14 @@ export function App() {
           <main id="main-content" ref={mainRef} tabIndex={-1} className="workspace-main">
             <div className="workspace-content">
             <DemoAccountBanner activeTab={activeTab} friendCount={profiles.length} onTabChange={setActiveTab} />
-            <motion.div key={activeTab} initial={{ y: 5 }} animate={{ y: 0 }} transition={{ duration: 0.18 }}>
+            <motion.div key={activeTab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, ease: 'easeOut' }}>
               {activeTab === 'overview' && <OverviewTab profiles={profiles} records={records} campaigns={campaigns} inbox={inbox} confidenceThreshold={threshold}
                 manuallyApprovedIds={manuallyApprovedIds} onNavigate={navigate} />}
               {activeTab === 'profiles' && <UnifiedProfilesTab profiles={profiles} confidenceThreshold={threshold} manuallyApprovedIds={manuallyApprovedIds}
+                freshByProfile={stitchFx?.freshByProfile} animateFresh={stitchFx ? !stitchFx.profilesSeen : false}
+                onFreshSeen={() => setStitchFx((current) => current && !current.profilesSeen ? { ...current, profilesSeen: true } : current)}
                 onSelectProfile={setInspectedProfileId} onGoToSources={goToSources} onGoToCampaign={goToCampaign} />}
-              {activeTab === 'collect' && <CollectUnifyTab profiles={profiles} records={records} busy={busy} isStitching={operation === 'stitch'} confidenceThreshold={threshold}
+              {activeTab === 'collect' && <CollectUnifyTab profiles={profiles} records={records} busy={busy} stitchFx={stitchFx} isStitching={operation === 'stitch'} confidenceThreshold={threshold}
                 onThresholdChange={(value) => {
                   setDemo((current) => ({ ...current, threshold: value }));
                   clearMatches();
@@ -331,10 +354,12 @@ export function App() {
               {activeTab === 'segment' && <CampaignSegmentTab profiles={profiles} records={records} confidenceThreshold={threshold} manuallyApprovedIds={manuallyApprovedIds}
                 segmentSource={segmentSource} onInspectProfile={setInspectedProfileId} brief={brief} onBriefChange={setBrief} campaignPrompt={campaignPrompt} matches={matches} busy={busy}
                 isSegmenting={operation === 'segment'} didSegment={didSegment} onPromptChange={(prompt) => { setCampaignPrompt(prompt); setBrief(null); clearMatches(); }}
-                onMatchesChange={setMatches} onRunSegment={recommend} onLaunchCampaign={launch} onGoToSources={goToSources} />}
+                onMatchesChange={setMatches} onRunSegment={recommend} onLaunchCampaign={launch} onGoToSources={goToSources} runId={matchRun} />}
               {activeTab === 'analytics' && <AnalyticsLoopTab campaigns={campaigns} activeCampaignId={activeCampaignId} profiles={profiles} busy={busy}
                 isSimulating={operation === 'simulate'} onSelectCampaign={setActiveCampaignId} onSimulateReplies={simulate}
-                onGoToSegmentation={goToCampaign} onInspectProfile={setInspectedProfileId} onSaveReply={savePastedReply} />}
+                onGoToSegmentation={goToCampaign} onInspectProfile={setInspectedProfileId} onSaveReply={savePastedReply}
+                launchFx={launchFx} onLaunchPlayed={() => setLaunchFx((current) => current && !current.played ? { ...current, played: true } : current)}
+                playbackRun={simulateRun.n} playbackCampaignId={simulateRun.campaignId} />}
               {activeTab === 'ai' && <AiPerformanceTab />}
             </motion.div>
             </div>
@@ -345,10 +370,11 @@ export function App() {
           <ToastRegion toasts={toasts} onDismiss={dismissToast} suppressed={inspectedProfile !== null || isXRayOpen} />
         </div>
       ) : (
-        <LandingPage onEnterWorkspace={(tab) => {
+        <LandingPage onEnterWorkspace={(tab, prompt) => {
           setActiveTab(tab);
           if (tab === 'segment') {
-            setCampaignPrompt(CAMPAIGN_PRESETS[0]);
+            setBrief(null);
+            setCampaignPrompt(prompt ?? CAMPAIGN_PRESETS[0]);
             clearMatches();
           }
           setIsLoggedIn(true);

@@ -1,5 +1,6 @@
 import { ChevronLeft, Database, LayoutDashboard, Gauge, Layers3, Menu, Radio, RotateCcw, SquareActivity, Users, Workflow, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { motion } from 'motion/react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { WorkflowTabId } from '../types/cdp.ts';
 
 interface TopNavbarProps {
@@ -22,6 +23,7 @@ const pages = [
 
 export function TopNavbar({ activeTab, onTabChange, onToggleXRay, onResetDemo, onReturnToLanding, busy }: TopNavbarProps) {
   const [open, setOpen] = useState(false);
+  const indicatorId = useId();
   const menuButton = useRef<HTMLButtonElement>(null);
   const firstItem = useRef<HTMLButtonElement>(null);
 
@@ -70,6 +72,7 @@ export function TopNavbar({ activeTab, onTabChange, onToggleXRay, onResetDemo, o
         <nav className="workspace-nav" aria-label="เมนูพื้นที่ทำงาน">
           {pages.map(({ id, label, icon: Icon }, index) => (
             <button key={id} ref={index === 0 ? firstItem : undefined} className="nav-item" aria-current={activeTab === id ? 'page' : undefined} onClick={run(() => onTabChange(id))}>
+              {activeTab === id && <motion.span layoutId={indicatorId} className="nav-indicator" aria-hidden="true" transition={{ duration: 0.2, ease: 'easeOut' }} />}
               <Icon size={18} aria-hidden="true" /> <span>{label}</span>
             </button>
           ))}

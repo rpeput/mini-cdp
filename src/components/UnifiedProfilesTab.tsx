@@ -1,9 +1,11 @@
 import { ArrowRight, ArrowUpRight, Database, Search, ShieldCheck, Sparkles, Users, X } from 'lucide-react';
-import { useState } from 'react';
+import { motion, useReducedMotion } from 'motion/react';
+import { useEffect, useState } from 'react';
 import { readSearch, type SearchIntent } from '../services/ai/searchIntent.ts';
 import { useTableState } from '../hooks/useTableState.ts';
 import type { UnifiedProfile } from '../types/cdp.ts';
 import { type ProfileQuery, type ProfileRow, PROFILE_SORT_KEYS, queryProfiles } from '../utils/listViews.ts';
+import { staggerDelay } from '../utils/motionSequence.ts';
 import { paginate } from '../utils/tableQuery.ts';
 import { ClearFiltersButton, Highlight, SearchBox, type SortOption, SortControl, SortHeader, TablePagination } from './TableControls.tsx';
 
@@ -11,6 +13,11 @@ interface UnifiedProfilesTabProps {
   profiles: UnifiedProfile[];
   confidenceThreshold: number;
   manuallyApprovedIds: Set<string>;
+  /** Interests the last run added, by profile. They are marked here until the user leaves for another page. */
+  freshByProfile?: Record<string, string[]>;
+  /** Play the marks in once: the first time this page is shown after a run. */
+  animateFresh?: boolean;
+  onFreshSeen?: () => void;
   onSelectProfile: (id: string) => void;
   onGoToSources: () => void;
   onGoToCampaign: () => void;
@@ -32,7 +39,10 @@ function inviteSummary({ accepted, declined, pending }: ProfileRow): string {
   return parts.join(' · ');
 }
 
-export function UnifiedProfilesTab({ profiles, confidenceThreshold, manuallyApprovedIds, onSelectProfile, onGoToSources, onGoToCampaign }: UnifiedProfilesTabProps) {
+export function UnifiedProfilesTab({ profiles, confidenceThreshold, manuallyApprovedIds, freshByProfile, animateFresh = false, onFreshSeen, onSelectProfile, onGoToSources, onGoToCampaign }: UnifiedProfilesTabProps) {
+  const reduced = useReducedMotion();
+  const [playFresh] = useState(animateFresh && !reduced);
+  useEffect(() => { onFreshSeen?.(); }, [onFreshSeen]);
   const table = useTableState({ storageKey: 'gather-table-profiles', filters: profileFilters, sortKey: 'name', direction: 'asc', sortKeys: PROFILE_SORT_KEYS });
   const { state } = table;
   const [question, setQuestion] = useState('');
@@ -137,9 +147,10 @@ export function UnifiedProfilesTab({ profiles, confidenceThreshold, manuallyAppr
               <SortHeader columnKey="acceptance" sortKey={state.sortKey} direction={state.direction} onSort={(key) => table.toggleSort(key, 'desc')}>คำเชิญ</SortHeader>
               <SortHeader columnKey="status" sortKey={state.sortKey} direction={state.direction} onSort={table.toggleSort}>สถานะ</SortHeader>
             </tr></thead>
-            <tbody>{view.rows.map((row) => {
+            <tbody>{view.rows.map((row, rowIndex) => {
               const { profile, status, verifiedTraits } = row;
               const traits = verifiedTraits.slice(0, 2);
+              const fresh = freshByProfile?.[profile.id] ?? [];
               return (
                 <tr key={profile.id}>
                   <td>
@@ -149,7 +160,13 @@ export function UnifiedProfilesTab({ profiles, confidenceThreshold, manuallyAppr
                       <ArrowUpRight size={16} aria-hidden="true" />
                     </button>
                   </td>
-                  <td>{traits.length ? <div className="chip-list">{traits.map((trait) => <span key={trait.id} className="chip"><Highlight text={trait.value} query={state.query} /></span>)}{verifiedTraits.length > 2 && <span className="muted">+{verifiedTraits.length - 2}</span>}</div> : <span className="muted">—</span>}</td>
+                  <td>{traits.length || fresh.length ? <div className="chip-list">{traits.map((trait) => <span key={trait.id} className="chip"><Highlight text={trait.value} query={state.query} /></span>)}{verifiedTraits.length > 2 && <span className="muted">+{verifiedTraits.length - 2}</span>}
+                    {fresh.length > 0 && (
+                      <motion.span className="chip chip-fresh" initial={playFresh ? { opacity: 0, scale: 0.9 } : false} animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.2, delay: playFresh ? staggerDelay(rowIndex) / 1000 : 0, ease: 'easeOut' }}>
+                        ใหม่ · {fresh.slice(0, 2).join(', ')}{fresh.length > 2 ? ` +${fresh.length - 2}` : ''}
+                      </motion.span>
+                    )}</div> : <span className="muted">—</span>}</td>
                   <td>{inviteSummary(row) || <span className="muted">—</span>}</td>
                   <td><span className={`chip ${status === 'no-consent' ? 'chip-neutral' : status === 'ready' ? 'chip-positive' : 'chip-waiting'}`}>{statusText[status]}</span></td>
                 </tr>

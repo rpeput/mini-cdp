@@ -1,13 +1,16 @@
-import { ArrowRight, Database, FileText, MessageSquare, Plus, ScanLine, Search, Share2 } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowRight, Database, FileText, MessageSquare, Plus, ScanLine, Search, Share2, Sparkles } from 'lucide-react';
+import { motion, useInView, useReducedMotion } from 'motion/react';
+import { useEffect, useRef, useState } from 'react';
 import type { DataSourceType, RawSourceRecord, UnifiedProfile, UnlinkedRecord } from '../types/cdp.ts';
 import { IdentityInbox } from './IdentityInbox.tsx';
 import { ReviewQueue, type ReviewNotice } from './ReviewQueue.tsx';
 import type { ReviewTarget } from '../utils/reviewQueue.ts';
 import { useTableState } from '../hooks/useTableState.ts';
 import { formatDateShort, SOURCE_META } from '../utils/cdpHelpers.ts';
-import { querySources, SOURCE_SORT_KEYS, type SourceQuery } from '../utils/listViews.ts';
+import { querySources, SOURCE_SORT_KEYS, type SourceQuery, type SourceRow as SourceRowData } from '../utils/listViews.ts';
+import { staggerDelay, type StitchFx } from '../utils/motionSequence.ts';
 import { paginate } from '../utils/tableQuery.ts';
+import { AnimatedNumber } from './MotionBits.tsx';
 import { ClearFiltersButton, Highlight, SearchBox, type SortOption, SortControl, TablePagination } from './TableControls.tsx';
 
 interface CollectUnifyTabProps {
@@ -15,6 +18,8 @@ interface CollectUnifyTabProps {
   records: RawSourceRecord[];
   busy: boolean;
   isStitching: boolean;
+  /** What the last run changed; null when there is nothing to show. */
+  stitchFx: StitchFx | null;
   confidenceThreshold: number;
   onThresholdChange: (threshold: number) => void;
   onRunStitching: () => void;
@@ -42,13 +47,82 @@ const sortOptions: readonly SortOption[] = [
 const recordFilters = { source: 'all', status: 'all' };
 const statusLabels = { pending: 'รอประมวลผล', processed: 'ประมวลผลแล้ว' };
 
+const ROW_STEP_MS = 70;
+
+/** A row nobody is looking at still ends up in its final state after this long. */
+const OFFSCREEN_FALLBACK_MS = 3500;
+
+/**
+ * True once `delayMs` has passed since the run `token` began *and the row is on screen*; true at once when there
+ * is no run to play. It is derived from the token, so the render in which a run starts already shows "waiting"
+ * (no flash of the final state), and a row below the fold flips when it is scrolled to instead of animating unseen.
+ */
+function useRunDelay(token: number | null, delayMs: number | null, visible: boolean): boolean {
+  const [doneToken, setDoneToken] = useState<number | null>(null);
+  useEffect(() => {
+    if (token === null || delayMs === null || !visible) return;
+    const id = window.setTimeout(() => setDoneToken(token), delayMs);
+    return () => window.clearTimeout(id);
+  }, [token, delayMs, visible]);
+  useEffect(() => {
+    if (token === null) return;
+    const id = window.setTimeout(() => setDoneToken(token), OFFSCREEN_FALLBACK_MS);
+    return () => window.clearTimeout(id);
+  }, [token]);
+  return token === null || delayMs === null || doneToken === token;
+}
+
+interface SourceRowProps {
+  row: SourceRowData;
+  query: string;
+  /** When set, the row shows "waiting" until this many ms have passed, then turns to "processed". */
+  delayMs: number | null;
+  /** The run being played; changes with every run. */
+  runId: number | null;
+  /** Interests this message is the evidence for, from the last run. */
+  evidence: string[] | undefined;
+  onInspectProfile: (id: string) => void;
+}
+
+function SourceRow({ row: { record, profile, status }, query, delayMs, runId, evidence, onInspectProfile }: SourceRowProps) {
+  const ref = useRef<HTMLLIElement>(null);
+  const done = useRunDelay(runId, delayMs, useInView(ref, { amount: 0.5 }));
+  const shown = status === 'processed' && !done ? 'pending' : status;
+  const playing = delayMs !== null;
+  return (
+    <li ref={ref}>
+      <div className="source-row-top">
+        <span className="chip-list"><span className="chip" lang="en">{SOURCE_META[record.source].shortLabel}</span>
+          <motion.span key={shown} className={`chip ${shown === 'pending' ? 'chip-waiting' : 'chip-positive'}`}
+            initial={playing && shown === 'processed' ? { opacity: 0, scale: 0.9 } : false} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.2, ease: 'easeOut' }}>{statusLabels[shown]}</motion.span></span>
+        {profile && <button className="text-button" onClick={() => onInspectProfile(profile.id)}>ดูโปรไฟล์ {profile.nickname} <ArrowRight size={14} aria-hidden="true" /></button>}
+      </div>
+      <p><Highlight text={record.rawText} query={query} /></p>
+      <small className="muted">{record.handle} · {formatDateShort(record.timestamp)}</small>
+      {evidence && (
+        // The slot is part of the row from the start, so the chip appearing later does not move anything below it.
+        <div className="evidence-slot">
+          {done && (
+            <>
+              <motion.span className="evidence-bar" aria-hidden="true" style={{ originY: 0 }} initial={playing ? { scaleY: 0 } : false} animate={{ scaleY: 1 }} transition={{ duration: 0.25, ease: 'easeOut' }} />
+              <motion.span className="chip chip-fresh" initial={playing ? { opacity: 0, y: 4 } : false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, delay: playing ? 0.08 : 0, ease: 'easeOut' }}>
+                <Sparkles size={12} aria-hidden="true" /> เป็นหลักฐานของ: {evidence.join(', ')}
+              </motion.span>
+            </>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
 const sources = [
   { id: 'LINE_CHAT', icon: MessageSquare },
   { id: 'FACEBOOK_POST', icon: Share2 },
   { id: 'DEPT_ROSTER', icon: FileText },
 ] as const;
 
-export function CollectUnifyTab({ profiles, records, busy, isStitching, confidenceThreshold, onThresholdChange, onRunStitching, onAddSignal, onInspectProfile, onGoToCampaign, inbox, onLoadSampleInbox, onConfirmLink, onDismissInbox, manuallyApprovedIds, reviewNotice, reviewError, onReviewDecide, onReviewUndo, onReviewClear }: CollectUnifyTabProps) {
+export function CollectUnifyTab({ profiles, records, busy, isStitching, stitchFx, confidenceThreshold, onThresholdChange, onRunStitching, onAddSignal, onInspectProfile, onGoToCampaign, inbox, onLoadSampleInbox, onConfirmLink, onDismissInbox, manuallyApprovedIds, reviewNotice, reviewError, onReviewDecide, onReviewUndo, onReviewClear }: CollectUnifyTabProps) {
   const table = useTableState({ storageKey: 'gather-table-sources', filters: recordFilters, sortKey: 'time', direction: 'desc', sortKeys: SOURCE_SORT_KEYS });
   const { state } = table;
   const [profileId, setProfileId] = useState(profiles[0]?.id ?? '');
@@ -63,6 +137,12 @@ export function CollectUnifyTab({ profiles, records, busy, isStitching, confiden
     direction: state.direction,
   });
   const view = paginate(matched, state.page, state.pageSize);
+  const reduced = useReducedMotion();
+  // A run is played only if it finished while this page was open; coming back to the page shows the result as it is.
+  const [mountedFxId] = useState(stitchFx?.id);
+  const playFx = stitchFx !== null && stitchFx.id !== mountedFxId && !reduced ? stitchFx : null;
+  const processedNow = new Set(playFx?.recordIds);
+  const rankByRecord = new Map(view.rows.filter(({ record }) => processedNow.has(record.id)).map(({ record }, rank) => [record.id, rank]));
 
   return (
     <section aria-labelledby="sources-title">
@@ -77,9 +157,20 @@ export function CollectUnifyTab({ profiles, records, busy, isStitching, confiden
           <div className="metric" key={id}><dt><Icon size={18} aria-hidden="true" /> <span lang="en">{SOURCE_META[id].label}</span></dt><dd>{records.filter((record) => record.source === id).length}</dd></div>
         ))}
       </dl>
-      <div className="notice">
+      <div className="notice notice-pipeline">
         <ScanLine size={20} aria-hidden="true" />
         <p role="status">{isStitching ? 'กำลังจับคู่ข้อมูลและอ่านข้อความต้นทาง…' : pending.length ? <><strong>{pending.length} โปรไฟล์รอประมวลผล</strong> ระบบจะจับคู่ด้วยรหัสโปรไฟล์ในชุดตัวอย่าง แล้วบันทึกความสนใจพร้อมข้อความอ้างอิง</> : <><strong>รวมข้อมูลครบแล้ว</strong> เปิดโปรไฟล์เพื่อตรวจหลักฐาน หรือนำข้อมูลไปสร้างแคมเปญ</>}</p>
+        <dl className="pipeline-counts" aria-label="สถานะการประมวลผล">
+          <div><dt>รอประมวลผล</dt><dd><AnimatedNumber className="count-num" value={pending.length} /> <span>โปรไฟล์</span></dd></div>
+          <div><dt>รวมข้อมูลแล้ว</dt><dd><AnimatedNumber className="count-num" value={profiles.length - pending.length} /> <span>โปรไฟล์</span></dd></div>
+        </dl>
+        {stitchFx && stitchFx.recordIds.length > 0 && (
+          <button className="button button-light" onClick={() => {
+            const target = document.getElementById('source-records');
+            target?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+            target?.focus({ preventScroll: true });
+          }}>ดูข้อความที่ประมวลผล</button>
+        )}
         {!pending.length && <button className="button button-light" onClick={onGoToCampaign}>สร้างแคมเปญ <ArrowRight size={16} aria-hidden="true" /></button>}
       </div>
       <IdentityInbox inbox={inbox} profiles={profiles} records={records} busy={busy} onLoadSamples={onLoadSampleInbox} onConfirm={onConfirmLink} onDismiss={onDismissInbox} />
@@ -115,7 +206,7 @@ export function CollectUnifyTab({ profiles, records, busy, isStitching, confiden
         </div>
         <div className="surface">
           <div className="table-toolbar">
-            <div><h2>ข้อมูลต้นทาง</h2><p aria-live="polite">{matched.length === records.length ? `${records.length} รายการ` : `พบ ${matched.length} จาก ${records.length} รายการ`}</p></div>
+            <div><h2 id="source-records" tabIndex={-1}>ข้อมูลต้นทาง</h2><p aria-live="polite">{matched.length === records.length ? `${records.length} รายการ` : `พบ ${matched.length} จาก ${records.length} รายการ`}</p></div>
           </div>
           <div className="list-controls">
             <SearchBox label="ค้นหาข้อมูลต้นทาง" placeholder="ข้อความ ชื่อ หรือรหัสนักศึกษา…" value={state.query} onChange={table.setQuery} />
@@ -133,16 +224,11 @@ export function CollectUnifyTab({ profiles, records, busy, isStitching, confiden
           </div>
           {view.rows.length ? (
             <ul className="source-list" aria-label="รายการข้อมูลต้นทาง">
-              {view.rows.map(({ record, profile, status }) => (
-                <li key={record.id}>
-                  <div className="source-row-top">
-                    <span className="chip-list"><span className="chip" lang="en">{SOURCE_META[record.source].shortLabel}</span><span className={`chip ${status === 'pending' ? 'chip-waiting' : 'chip-positive'}`}>{statusLabels[status]}</span></span>
-                    {profile && <button className="text-button" onClick={() => onInspectProfile(profile.id)}>ดูโปรไฟล์ {profile.nickname} <ArrowRight size={14} aria-hidden="true" /></button>}
-                  </div>
-                  <p><Highlight text={record.rawText} query={state.query} /></p>
-                  <small className="muted">{record.handle} · {formatDateShort(record.timestamp)}</small>
-                </li>
-              ))}
+              {view.rows.map((row) => {
+                const rank = rankByRecord.get(row.record.id);
+                return <SourceRow key={row.record.id} row={row} query={state.query} onInspectProfile={onInspectProfile}
+                  delayMs={rank === undefined ? null : staggerDelay(rank, ROW_STEP_MS, 10) + 120} runId={playFx?.id ?? null} evidence={stitchFx?.evidenceByRecord[row.record.id]} />;
+              })}
             </ul>
           ) : (
             <div className="empty"><Search aria-hidden="true" /><h3>ไม่พบข้อมูลที่ตรงกับตัวกรอง</h3><p>ลองเปลี่ยนคำค้นหาหรือล้างตัวกรอง</p><button className="button button-light" onClick={table.clearFilters}>ล้างตัวกรอง</button></div>
