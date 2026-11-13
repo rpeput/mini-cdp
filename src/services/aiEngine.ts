@@ -11,7 +11,12 @@ import type {
   UnifiedProfile,
 } from '../types/cdp.ts';
 
-const AI_PROXY_TIMEOUT_MS = 4_000;
+const AI_PROXY_TIMEOUT_MS = 18_000;
+
+interface AiProxyResult<TData> {
+  data: TData;
+  model?: string;
+}
 
 export interface StitchingResult {
   profiles: UnifiedProfile[];
@@ -394,7 +399,7 @@ function stripEmojis(text: string): string {
 async function callAiProxy<TData>(
   action: AiAction,
   payload: unknown,
-): Promise<TData | null> {
+): Promise<AiProxyResult<TData> | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), AI_PROXY_TIMEOUT_MS);
 
@@ -411,11 +416,14 @@ async function callAiProxy<TData>(
     }
 
     const parsed = (await response.json()) as AiProxyResponse<TData>;
-    if (!parsed || parsed.fallback) {
+    if (!parsed || parsed.fallback || !parsed.data) {
       return null;
     }
 
-    return parsed.data ?? null;
+    return {
+      data: parsed.data,
+      model: parsed.model,
+    };
   } catch {
     return null;
   } finally {
@@ -501,7 +509,7 @@ export async function runIdentityStitching(
     unstitchedIds.has(record.linkedProfileId),
   );
 
-  const remotePayload = await callAiProxy<StitchApiPayload>('stitch', {
+  const remoteResult = await callAiProxy<StitchApiPayload>('stitch', {
     profiles: unstitchedProfiles.map((p) => ({
       id: p.id,
       fullName: p.fullName,
@@ -510,6 +518,8 @@ export async function runIdentityStitching(
     })),
     rawRecords: pendingRecords,
   });
+  const remotePayload = remoteResult?.data ?? null;
+  const remoteModel = remoteResult?.model || 'gpt-6-luna';
 
   const remoteByProfile = new Map<
     string,
@@ -599,7 +609,7 @@ export async function runIdentityStitching(
   const logs: PipelineLog[] = [
     createLog(
       'Entity Resolution',
-      `Resolved ${pendingRecords.length} multi-source records across LINE_CHAT, FACEBOOK_POST, and DEPT_ROSTER into ${unstitchedProfiles.length} unified profiles (${usedFallback ? 'Deterministic Local Engine' : 'Gemini 2.5 Flash'}).`,
+      `Resolved ${pendingRecords.length} multi-source records across LINE_CHAT, FACEBOOK_POST, and DEPT_ROSTER into ${unstitchedProfiles.length} unified profiles (${usedFallback ? 'Deterministic Local Engine' : remoteModel}).`,
       elapsedMs * 0.4,
     ),
     createLog(
@@ -808,7 +818,7 @@ export async function segmentCampaign(
     };
   }
 
-  const remotePayload = await callAiProxy<SegmentApiPayload>('segment', {
+  const remoteResult = await callAiProxy<SegmentApiPayload>('segment', {
     campaignPrompt: normalizedPrompt,
     profiles: eligibleProfiles.map((p) => ({
       id: p.id,
@@ -819,6 +829,8 @@ export async function segmentCampaign(
       campaignHistory: p.campaignHistory,
     })),
   });
+  const remotePayload = remoteResult?.data ?? null;
+  const remoteModel = remoteResult?.model || 'gpt-6-luna';
 
   const eligibleMap = new Map(eligibleProfiles.map((p) => [p.id, p]));
   let matches: CampaignMatch[] = [];
@@ -912,7 +924,7 @@ export async function segmentCampaign(
     ),
     createLog(
       'Audience & Lookalike Scoring',
-      `Ranked ${directCount} direct matches (82-98) and ${lookalikeCount} lookalike expansion matches (65-81) via ${usedFallback ? 'Local Semantic Engine' : 'Gemini 2.5 Flash'}.`,
+      `Ranked ${directCount} direct matches (82-98) and ${lookalikeCount} lookalike expansion matches (65-81) via ${usedFallback ? 'Local Semantic Engine' : remoteModel}.`,
       elapsedMs * 0.4,
     ),
     createLog(
@@ -1033,7 +1045,7 @@ export async function simulateCampaignResponses(
   }
 
   const profileMap = new Map(profiles.map((p) => [p.id, p]));
-  const remotePayload = await callAiProxy<SimulateRepliesApiPayload>(
+  const remoteResult = await callAiProxy<SimulateRepliesApiPayload>(
     'simulate_replies',
     {
       campaignName,
@@ -1049,6 +1061,8 @@ export async function simulateCampaignResponses(
       }),
     },
   );
+  const remotePayload = remoteResult?.data ?? null;
+  const remoteModel = remoteResult?.model || 'gpt-6-luna';
 
   const remoteRepliesMap = new Map<
     string,
@@ -1164,7 +1178,7 @@ export async function simulateCampaignResponses(
   const logs: PipelineLog[] = [
     createLog(
       'Campaign Dispatch',
-      `Sent ${interactions.length} personalized invitations for "${campaignName}" via ${usedFallback ? 'Local Simulator' : 'Gemini 2.5 Flash'}.`,
+      `Sent ${interactions.length} personalized invitations for "${campaignName}" via ${usedFallback ? 'Local Simulator' : remoteModel}.`,
       elapsedMs * 0.3,
     ),
     createLog(

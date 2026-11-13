@@ -216,9 +216,9 @@ export function XRayDrawer({
                 <code className="rounded bg-zinc-100 px-1 py-0.5 text-[11px]">
                   POST /api/ai
                 </code>{' '}
-                (keeping{' '}
+                (OpenAI-compatible MaxPlus AI <code className="rounded bg-zinc-100 px-1 py-0.5 text-[11px]">gpt-6-luna</code> via{' '}
                 <code className="rounded bg-zinc-100 px-1 py-0.5 text-[11px]">
-                  GEMINI_API_KEY
+                  LLM_API_KEY
                 </code>{' '}
                 server-only) with deterministic Thai semantic fallback on{' '}
                 <code className="rounded bg-zinc-100 px-1 py-0.5 text-[11px]">

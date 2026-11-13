@@ -82,6 +82,7 @@ export type AiProxyResponse<TData = unknown> =
   | {
       fallback: false;
       action: AiAction;
+      model?: string;
       data: TData;
     };
 

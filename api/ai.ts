@@ -1,10 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import type { AiAction } from '../src/types/cdp.ts';
 
-const GEMINI_ENDPOINT =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const DEFAULT_BASE_URL = 'https://api.maxplus-ai.cc/auto-pools/v1';
+const DEFAULT_MODEL = 'gpt-6-luna';
+const REQUEST_TIMEOUT_MS = 25_000;
 
-const REQUEST_TIMEOUT_MS = 15_000;
+type WireApiMode = 'auto' | 'chat' | 'responses';
 
 const VALID_ACTIONS = new Set<AiAction>([
   'stitch',
@@ -85,14 +86,35 @@ Rules:
    }`,
 };
 
-interface GeminiApiResponse {
-  candidates?: Array<{
-    content?: {
-      parts?: Array<{
-        text?: string;
-      }>;
+interface ChatCompletionsApiResponse {
+  choices?: Array<{
+    message?: {
+      content?:
+        | string
+        | Array<{
+            type?: string;
+            text?: string;
+          }>
+        | null;
     };
   }>;
+}
+
+interface ResponsesApiResponse {
+  output_text?: string;
+  output?: Array<{
+    type?: string;
+    content?: Array<{
+      type?: string;
+      text?: string;
+    }>;
+  }>;
+}
+
+interface UpstreamCallResult {
+  ok: boolean;
+  status: number;
+  content: string;
 }
 
 interface ParsedRequestBody {
@@ -133,6 +155,57 @@ function parseRequestBody(rawBody: unknown): ParsedRequestBody | null {
   };
 }
 
+function normalizeOpenAiBaseUrl(rawUrl: string): string {
+  return rawUrl
+    .trim()
+    .replace(/\/+(chat\/completions|responses)\/?$/i, '')
+    .replace(/\/+$/, '');
+}
+
+function resolveWireApiMode(rawMode: string | undefined): WireApiMode {
+  const normalized = rawMode?.trim().toLowerCase();
+  if (normalized === 'chat' || normalized === 'responses') {
+    return normalized;
+  }
+  return 'auto';
+}
+
+function extractChatContent(payload: ChatCompletionsApiResponse): string {
+  const raw = payload.choices?.[0]?.message?.content;
+  if (typeof raw === 'string') {
+    return raw.trim();
+  }
+  if (Array.isArray(raw)) {
+    return raw
+      .map((part) => (typeof part.text === 'string' ? part.text : ''))
+      .join('')
+      .trim();
+  }
+  return '';
+}
+
+function extractResponsesContent(payload: ResponsesApiResponse): string {
+  if (typeof payload.output_text === 'string' && payload.output_text.trim()) {
+    return payload.output_text.trim();
+  }
+  if (!Array.isArray(payload.output)) {
+    return '';
+  }
+
+  const chunks: string[] = [];
+  for (const item of payload.output) {
+    if (!Array.isArray(item.content)) {
+      continue;
+    }
+    for (const part of item.content) {
+      if (typeof part.text === 'string' && part.text) {
+        chunks.push(part.text);
+      }
+    }
+  }
+  return chunks.join('').trim();
+}
+
 function parseModelJson(rawText: string): unknown {
   const trimmed = rawText.trim();
   const unwrapped = trimmed.startsWith('```')
@@ -140,6 +213,80 @@ function parseModelJson(rawText: string): unknown {
     : trimmed;
 
   return JSON.parse(unwrapped) as unknown;
+}
+
+async function callChatCompletions(params: {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  systemPrompt: string;
+  userPrompt: string;
+  temperature: number;
+  timeoutMs: number;
+}): Promise<UpstreamCallResult> {
+  const response = await fetch(`${params.baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${params.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: params.model,
+      messages: [
+        { role: 'system', content: params.systemPrompt },
+        { role: 'user', content: params.userPrompt },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: params.temperature,
+    }),
+    signal: AbortSignal.timeout(params.timeoutMs),
+  });
+
+  if (!response.ok) {
+    return { ok: false, status: response.status, content: '' };
+  }
+
+  const data = (await response.json()) as ChatCompletionsApiResponse;
+  return { ok: true, status: response.status, content: extractChatContent(data) };
+}
+
+async function callResponsesApi(params: {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  systemPrompt: string;
+  userPrompt: string;
+  timeoutMs: number;
+}): Promise<UpstreamCallResult> {
+  const response = await fetch(`${params.baseUrl}/responses`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${params.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: params.model,
+      instructions: params.systemPrompt,
+      input: params.userPrompt,
+      text: {
+        format: {
+          type: 'json_object',
+        },
+      },
+    }),
+    signal: AbortSignal.timeout(params.timeoutMs),
+  });
+
+  if (!response.ok) {
+    return { ok: false, status: response.status, content: '' };
+  }
+
+  const data = (await response.json()) as ResponsesApiResponse;
+  return {
+    ok: true,
+    status: response.status,
+    content: extractResponsesContent(data),
+  };
 }
 
 export default async function handler(
@@ -160,69 +307,96 @@ export default async function handler(
     return;
   }
 
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  const apiKey =
+    process.env.LLM_API_KEY?.trim() || process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     res.status(200).json({ fallback: true });
     return;
   }
 
+  const baseUrl = normalizeOpenAiBaseUrl(
+    process.env.LLM_BASE_URL ||
+      process.env.OPENAI_BASE_URL ||
+      DEFAULT_BASE_URL,
+  );
+  const model = (
+    process.env.LLM_MODEL ||
+    process.env.OPENAI_MODEL ||
+    DEFAULT_MODEL
+  ).trim();
+  const wireApiMode = resolveWireApiMode(process.env.LLM_WIRE_API);
+
   const { action, payload } = parsedBody;
+  const systemPrompt = SYSTEM_PROMPTS[action];
+  const userPrompt = JSON.stringify(payload);
+  const temperature = action === 'simulate_replies' ? 0.5 : 0.15;
+  const deadlineAt = Date.now() + REQUEST_TIMEOUT_MS;
 
   try {
-    const upstreamResponse = await fetch(GEMINI_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: SYSTEM_PROMPTS[action] }],
-        },
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: JSON.stringify(payload) }],
-          },
-        ],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: action === 'simulate_replies' ? 0.5 : 0.15,
-        },
-      }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
+    let result: UpstreamCallResult;
 
-    if (!upstreamResponse.ok) {
+    if (wireApiMode === 'responses') {
+      result = await callResponsesApi({
+        baseUrl,
+        apiKey,
+        model,
+        systemPrompt,
+        userPrompt,
+        timeoutMs: Math.max(1_000, deadlineAt - Date.now()),
+      });
+    } else {
+      result = await callChatCompletions({
+        baseUrl,
+        apiKey,
+        model,
+        systemPrompt,
+        userPrompt,
+        temperature,
+        timeoutMs: Math.max(1_000, deadlineAt - Date.now()),
+      });
+
+      const shouldRetryResponses =
+        wireApiMode === 'auto' &&
+        !result.ok &&
+        [400, 404, 405, 422].includes(result.status) &&
+        deadlineAt - Date.now() > 2_000;
+
+      if (shouldRetryResponses) {
+        result = await callResponsesApi({
+          baseUrl,
+          apiKey,
+          model,
+          systemPrompt,
+          userPrompt,
+          timeoutMs: Math.max(1_000, deadlineAt - Date.now()),
+        });
+      }
+    }
+
+    if (!result.ok) {
       console.error(
-        `[api/ai] Gemini API returned HTTP ${upstreamResponse.status} for action "${action}"`,
+        `[api/ai] Upstream LLM (${model}) returned HTTP ${result.status} for action "${action}"`,
       );
       res.status(200).json({
         fallback: true,
-        reason: `upstream_http_${upstreamResponse.status}`,
+        reason: `upstream_http_${result.status}`,
       });
       return;
     }
 
-    const geminiPayload =
-      (await upstreamResponse.json()) as GeminiApiResponse;
-    const rawContent = geminiPayload.candidates?.[0]?.content?.parts
-      ?.map((part) => part.text ?? '')
-      .join('')
-      .trim();
-
-    if (!rawContent) {
+    if (!result.content) {
       console.error(
-        `[api/ai] Gemini API returned empty candidate content for action "${action}"`,
+        `[api/ai] Upstream LLM (${model}) returned empty content for action "${action}"`,
       );
       res.status(200).json({ fallback: true, reason: 'empty_response' });
       return;
     }
 
-    const structuredData = parseModelJson(rawContent);
+    const structuredData = parseModelJson(result.content);
     res.status(200).json({
       fallback: false,
       action,
+      model,
       data: structuredData,
     });
   } catch (error) {

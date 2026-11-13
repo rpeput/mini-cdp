@@ -14,7 +14,7 @@ flowchart LR
 
   subgraph HybridAI["2. Unify & Activate (Hybrid AI Engine)"]
     PROXY["Vercel Serverless Proxy (POST /api/ai)"]
-    GEMINI["Gemini 2.5 Flash (JSON Mode)"]
+    LLM["MaxPlus AI OpenAI Gateway (gpt-6-luna, JSON Mode)"]
     LOCAL["Deterministic Local Semantic Fallback"]
   end
 
@@ -33,9 +33,9 @@ flowchart LR
   LINE --> PROXY
   FB --> PROXY
   ROSTER --> PROXY
-  PROXY -->|"GEMINI_API_KEY present"| GEMINI
+  PROXY -->|"LLM_API_KEY present"| LLM
   PROXY -->|"Missing key / fallback: true / offline"| LOCAL
-  GEMINI --> QUOTES
+  LLM --> QUOTES
   LOCAL --> QUOTES
   QUOTES --> SLIDER --> PDPA --> SEG --> SIM --> SYNC
   SYNC -->|"Writes behavioral attributes"| Govern
@@ -52,12 +52,13 @@ flowchart LR
 ## Key Engineering Highlights
 
 - **Hallucination Mitigation & Grounding:**
-  - All Gemini requests enforce `generationConfig: { responseMimeType: "application/json" }` and strict schema alignment with `src/types/cdp.ts`.
+  - All LLM requests enforce JSON output mode (`response_format: { type: "json_object" }` on `/v1/chat/completions`, or `text: { format: { type: "json_object" } }` on `/v1/responses`) and strict schema validation against `src/types/cdp.ts`.
   - Every `ExtractedAttribute` carries a verbatim `evidenceQuote` substring traced directly to its source record (`LINE_CHAT`, `FACEBOOK_POST`, or `DEPT_ROSTER`).
   - A global **Confidence Threshold Slider** (`50%–95%`, default `75%`) dynamically flags attributes below the gate as `Needs Review` for explicit human **Approve / Reject** governance.
 - **Zero-Downtime Hybrid AI Resilience:**
-  - Browser code never holds or sends `GEMINI_API_KEY`. Every AI call goes through `POST /api/ai` (`api/ai.ts`) with a 4-second client timeout (`src/services/aiEngine.ts`).
-  - When `GEMINI_API_KEY` is unset or the upstream endpoint is unreachable (including standard local `vite` dev), `/api/ai` returns `{ fallback: true }` with HTTP `200`, seamlessly activating the deterministic local Thai/English semantic engine with identical output contracts.
+  - Browser code never holds or sends API credentials. Every AI call goes through `POST /api/ai` (`api/ai.ts`) with an 18-second client timeout (`src/services/aiEngine.ts`) tailored for multi-profile `gpt-6-luna` inference via gateway proxies.
+  - `api/ai.ts` targets `https://api.maxplus-ai.cc/auto-pools/v1/chat/completions` by default and automatically adapts to `/v1/responses` when an upstream pool/model requires the OpenAI Responses API.
+  - When `LLM_API_KEY` (`OPENAI_API_KEY`) is unset or the upstream endpoint is unreachable (including standard local `vite` dev), `/api/ai` returns `{ fallback: true }` with HTTP `200`, seamlessly activating the deterministic local Thai/English semantic engine with identical output contracts.
 - **Strict Enterprise UI & Accessibility:**
   - Built with React 19, TypeScript (`strict: true`), Tailwind CSS v4 (`@theme` tokens in `src/index.css`), Framer Motion (`MotionConfig reducedMotion="user"`), and Lucide icons.
   - Native modal `<dialog>` drawers with `overscroll-behavior: contain`, `tabular-nums` on all scores/latencies/KPIs, and visible `focus-visible` rings across all controls.
@@ -66,7 +67,7 @@ flowchart LR
 
 ```text
 api/
-  ai.ts                           # Vercel Serverless Gemini 2.5 Flash proxy + { fallback: true }
+  ai.ts                           # Vercel Serverless MaxPlus AI / OpenAI-compatible proxy + { fallback: true }
 src/
   components/
     AnalyticsLoopTab.tsx          # Tab 4: KPIs, reply simulation & closed-loop sync
@@ -106,14 +107,19 @@ npm install
 npm run dev
 ```
 
-No API key is required for local development — all three AI workflows (`stitch`, `segment`, `simulate_replies`) seamlessly use the deterministic local semantic engine when `/api/ai` is unavailable or `GEMINI_API_KEY` is unset.
+No API key is required for local development — all three AI workflows (`stitch`, `segment`, `simulate_replies`) seamlessly use the deterministic local semantic engine when `/api/ai` is unavailable or `LLM_API_KEY` is unset.
 
-### 3. Optional: Enable Live Gemini 2.5 Flash via Vercel
+### 3. Optional: Enable Live `gpt-6-luna` (MaxPlus AI / OpenAI-Compatible) via Vercel
 
-Add `GEMINI_API_KEY` as a server-side environment variable in Vercel Project Settings (or `.env.local` when running `vercel dev`):
+Add `LLM_API_KEY` as a server-side environment variable in Vercel Project Settings (or `.env.local` when running `vercel dev`):
 
 ```bash
-GEMINI_API_KEY=your_gemini_api_key_here
+LLM_API_KEY=your_maxplus_or_openai_api_key_here
+# Optional overrides (defaults shown below):
+LLM_BASE_URL=https://api.maxplus-ai.cc/auto-pools/v1
+LLM_MODEL=gpt-6-luna
+# auto (tries /chat/completions, falls back to /responses on 400/404/405/422) | chat | responses
+LLM_WIRE_API=auto
 ```
 
 ### 4. Typecheck, Lint, and Production Build
