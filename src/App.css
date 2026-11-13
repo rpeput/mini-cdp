@@ -458,3 +458,8 @@ th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--gather-acce
 .step-text small { font-size: .8rem; color: var(--gather-muted); overflow-wrap: anywhere; }
 .campaign-summary.is-waiting { opacity: .62; }
 @media (max-width: 640px) { .step-guide ol { grid-template-columns: 1fr; } }
+
+/* Coach note above a row action: opens upward so it does not cover the neighbouring button */
+.coach-tip { top: auto; bottom: calc(100% + 12px); inset-inline-end: 0; width: min(310px, calc(100vw - 48px)); text-align: start; }
+.coach-tip::before { top: auto; bottom: -6px; inset-inline-start: auto; inset-inline-end: calc(var(--target-w, 100px) / 2 - 6px); }
+.coach-wrap { display: inline-flex; }

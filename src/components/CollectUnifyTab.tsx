@@ -47,6 +47,9 @@ const SOURCE_STEPS: GuideStep[] = [
   { label: 'ไปสร้างแคมเปญ', hint: 'ข้อมูลพร้อมแล้ว กดสร้างแคมเปญ' },
 ];
 
+/** The review note is shown once per page load, after the first run that finishes while this page is open. */
+let reviewCoachSeen = false;
+
 const sortOptions: readonly SortOption[] = [
   { key: 'time', label: 'เวลา', asc: 'เก่า → ใหม่', desc: 'ใหม่ → เก่า' },
   { key: 'friend', label: 'เพื่อน', asc: 'ก → ฮ', desc: 'ฮ → ก' },
@@ -149,8 +152,10 @@ export function CollectUnifyTab({ profiles, records, busy, isStitching, stitchFx
   const reviewCount = useMemo(() => listReviewRows(profiles, confidenceThreshold, manuallyApprovedIds).length, [profiles, confidenceThreshold, manuallyApprovedIds]);
   const step = pending.length ? 0 : reviewCount ? 1 : 2;
   const reduced = useReducedMotion();
+  const [coachDismissed, setCoachDismissed] = useState(false);
   // A run is played only if it finished while this page was open; coming back to the page shows the result as it is.
   const [mountedFxId] = useState(stitchFx?.id);
+  const coachOn = !reviewCoachSeen && !coachDismissed && stitchFx !== null && stitchFx.id !== mountedFxId;
   const playFx = stitchFx !== null && stitchFx.id !== mountedFxId && !reduced ? stitchFx : null;
   const processedNow = new Set(playFx?.recordIds);
   const rankByRecord = new Map(view.rows.filter(({ record }) => processedNow.has(record.id)).map(({ record }, rank) => [record.id, rank]));
@@ -195,7 +200,8 @@ export function CollectUnifyTab({ profiles, records, busy, isStitching, stitchFx
       </div>
       <IdentityInbox inbox={inbox} profiles={profiles} records={records} busy={busy} onLoadSamples={onLoadSampleInbox} onConfirm={onConfirmLink} onDismiss={onDismissInbox} />
       <ReviewQueue profiles={profiles} confidenceThreshold={confidenceThreshold} manuallyApprovedIds={manuallyApprovedIds} busy={busy} loading={isStitching}
-        error={reviewError} notice={reviewNotice} onDecide={onReviewDecide} onUndo={onReviewUndo} onClearNotice={onReviewClear} onInspectProfile={onInspectProfile} />
+        error={reviewError} notice={reviewNotice} onDecide={onReviewDecide} onUndo={onReviewUndo} onClearNotice={onReviewClear} onInspectProfile={onInspectProfile}
+        coach={coachOn} onCoachDone={() => { reviewCoachSeen = true; setCoachDismissed(true); }} />
       <div className="source-layout">
         <div className="source-tools">
           <form className="surface panel" onSubmit={(event) => {

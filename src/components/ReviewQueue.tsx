@@ -7,6 +7,7 @@ import { SOURCE_META } from '../utils/cdpHelpers.ts';
 import { CONFIDENCE_BANDS, listReviewRows, queryReviewRows, REVIEW_SORT_KEYS, type ReviewQuery, type ReviewSnapshot, type ReviewTarget } from '../utils/reviewQueue.ts';
 import { paginate } from '../utils/tableQuery.ts';
 import { CATEGORY_LABEL_TH } from '../utils/overview.ts';
+import { CoachTarget } from './CoachTarget.tsx';
 import { ClearFiltersButton, Highlight, SearchBox, type SortOption, SortControl, TablePagination } from './TableControls.tsx';
 
 export interface ReviewNotice {
@@ -28,6 +29,9 @@ interface ReviewQueueProps {
   onUndo: () => void;
   onClearNotice: () => void;
   onInspectProfile: (id: string) => void;
+  /** True right after a run finished: the first row's confirm button gets a short note. */
+  coach?: boolean;
+  onCoachDone?: () => void;
 }
 
 const sortOptions: readonly SortOption[] = [
@@ -39,7 +43,7 @@ const sortOptions: readonly SortOption[] = [
 const reviewFilters = { friend: 'all', source: 'all', band: 'all' };
 const sourceIds = Object.keys(SOURCE_META) as DataSourceType[];
 
-export function ReviewQueue({ profiles, confidenceThreshold, manuallyApprovedIds, busy, loading, error, notice, onDecide, onUndo, onClearNotice, onInspectProfile }: ReviewQueueProps) {
+export function ReviewQueue({ profiles, confidenceThreshold, manuallyApprovedIds, busy, loading, error, notice, onDecide, onUndo, onClearNotice, onInspectProfile, coach = false, onCoachDone = () => {} }: ReviewQueueProps) {
   const table = useTableState({ storageKey: 'gather-table-review', filters: reviewFilters, sortKey: 'confidence', direction: 'asc', sortKeys: REVIEW_SORT_KEYS });
   const { state } = table;
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -61,6 +65,7 @@ export function ReviewQueue({ profiles, confidenceThreshold, manuallyApprovedIds
 
   function decide(rows: typeof all, decision: 'verified' | 'rejected') {
     if (disabled || !rows.length) return;
+    if (coach) onCoachDone();
     onDecide(rows.map((row) => ({ profileId: row.profile.id, attributeId: row.attribute.id })), decision);
     setSelected((current) => {
       const next = new Set(current);
@@ -156,7 +161,7 @@ export function ReviewQueue({ profiles, confidenceThreshold, manuallyApprovedIds
           {view.rows.length ? (
             <ul className="review-list" aria-label="รายการความสนใจรอตรวจ">
               <AnimatePresence initial={false}>
-                {view.rows.map((row) => (
+                {view.rows.map((row, rowIndex) => (
                   <motion.li key={row.key} exit={{ opacity: 0, x: 28, pointerEvents: 'none' }} transition={{ duration: 0.2, ease: 'easeOut' }}>
                     <label className="review-check review-pick">
                       <input type="checkbox" checked={selected.has(row.key)} disabled={disabled} onChange={() => toggle(row.key)} />
@@ -173,7 +178,11 @@ export function ReviewQueue({ profiles, confidenceThreshold, manuallyApprovedIds
                       <button type="button" className="text-button" onClick={() => onInspectProfile(row.profile.id)}>ดูโปรไฟล์ {row.profile.nickname}</button>
                     </div>
                     <div className="review-actions">
-                      <button type="button" className="button button-primary" disabled={disabled} aria-label={`ยืนยัน ${row.profile.nickname} สนใจ ${row.attribute.value}`} onClick={() => decide([row], 'verified')}><Check size={17} aria-hidden="true" /> ยืนยัน</button>
+                      {rowIndex === 0 && coach && !disabled ? (
+                        <CoachTarget active title="ลองตรวจดูตรงนี้" onDone={onCoachDone} target={<button type="button" className="button button-primary" disabled={disabled} aria-label={`ยืนยัน ${row.profile.nickname} สนใจ ${row.attribute.value}`} onClick={() => decide([row], 'verified')}><Check size={17} aria-hidden="true" /> ยืนยัน</button>}>
+                          ระบบอ่านข้อความแล้วเดาว่าเพื่อนคนนี้สนใจอะไร แต่ยังไม่มั่นใจ ถ้าข้อความทางซ้ายพูดถึงเรื่องนี้จริง กด <strong>ยืนยัน</strong> เพื่อให้ใช้แนะนำผู้รับ ถ้าไม่ใช่ กด <strong>ปฏิเสธ</strong> เปลี่ยนใจทีหลังได้
+                        </CoachTarget>
+                      ) : <button type="button" className="button button-primary" disabled={disabled} aria-label={`ยืนยัน ${row.profile.nickname} สนใจ ${row.attribute.value}`} onClick={() => decide([row], 'verified')}><Check size={17} aria-hidden="true" /> ยืนยัน</button>}
                       <button type="button" className="button button-light" disabled={disabled} aria-label={`ปฏิเสธ ${row.profile.nickname} สนใจ ${row.attribute.value}`} onClick={() => decide([row], 'rejected')}><X size={17} aria-hidden="true" /> ปฏิเสธ</button>
                     </div>
                   </motion.li>
