@@ -60,12 +60,12 @@ export function RecommendationEvidenceDrawer({ profile, match, campaignPrompt, r
                     <span className={`chip ${relation === 'direct' ? 'chip-positive' : ''}`}>{relation === 'direct' ? 'ตรงความสนใจ' : 'ใกล้เคียง'}</span>
                   </div>
                   <blockquote><Quote size={15} aria-hidden="true" /> {highlight(attribute.evidenceQuote, matchedTerm)}</blockquote>
-                  <small>{SOURCE_META[attribute.source].label} · ความมั่นใจ {attribute.confidence}% · {statusLabels[status]} · คำที่ตรง “{matchedTerm}”</small>
+                  <small><span data-source={attribute.source} lang="en">{SOURCE_META[attribute.source].label}</span> · ความมั่นใจ {attribute.confidence}% · {statusLabels[status]} · คำที่ตรง “{matchedTerm}”</small>
                   {record ? (
                     <details className="source-message">
                       <summary>ดูข้อความต้นทางทั้งหมด</summary>
                       <p>{record.rawText}</p>
-                      <small>{SOURCE_META[record.source].label} · {formatDateShort(record.timestamp)}</small>
+                      <small><span data-source={record.source} lang="en">{SOURCE_META[record.source].label}</span> · {formatDateShort(record.timestamp)}</small>
                     </details>
                   ) : (
                     <p className="muted">ไม่มีข้อความต้นทางที่ตรงกัน หลักฐานนี้อาจมาจากคำตอบกลับที่จำลองไว้ในโปรไฟล์</p>
