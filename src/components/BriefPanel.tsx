@@ -45,6 +45,7 @@ export function BriefPanel({ prompt, brief, disabled, onBriefChange }: BriefPane
       <button type="button" className="button button-light" disabled={disabled || loading || !prompt.trim()} onClick={read}>
         <Sparkles size={16} aria-hidden="true" /> {loading ? 'กำลังอ่านโจทย์…' : current ? 'อ่านโจทย์ใหม่' : 'อ่านโจทย์'}
       </button>
+      {!current && <p className="muted brief-help">ไม่บังคับ ให้ระบบดึงจำนวนคน งบ วัน และเวลาจากประโยคด้านบน ใช้จำกัดจำนวนผู้รับและเตือนเพื่อนที่งบตึง</p>}
       {current && (
         <div className="brief-result" role="status">
           <p className="muted">{current.source === 'model' ? 'AI อ่านได้ดังนี้ (แต่ละข้อคัดจากโจทย์ของคุณ)' : 'ผลจากโหมดพื้นฐาน รองรับตัวเลขและคำบอกวันที่ใช้บ่อย'}</p>
@@ -58,7 +59,7 @@ export function BriefPanel({ prompt, brief, disabled, onBriefChange }: BriefPane
                 </li>
               ))}
             </ul>
-          ) : <p>ไม่พบวัน งบ หรือจำนวนคนในโจทย์</p>}
+          ) : <p>ไม่พบวัน เวลา งบ หรือจำนวนคนในโจทย์ ลองเขียนเพิ่ม เช่น “ศุกร์นี้ งบไม่เกิน 300 บาท 6 คน” แล้วกดอ่านใหม่</p>}
           {missingConstraints(current.constraints).length > 0 && current.clarifyingQuestion && (
             <p className="brief-question"><HelpCircle size={15} aria-hidden="true" /> {current.clarifyingQuestion} เพิ่มในโจทย์แล้วกดอ่านใหม่ได้</p>
           )}

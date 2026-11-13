@@ -468,3 +468,10 @@ th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--gather-acce
 .ai-tip.coach-tip p { color: #fbf9ff; font-size: .92rem; line-height: 1.65; }
 .ai-tip.coach-tip .ai-tip-title { color: var(--gather-lilac); }
 .ai-tip.coach-tip strong { color: var(--gather-lilac); font-weight: 700; }
+
+.coach-tip-start { inset-inline-start: 0; inset-inline-end: auto; }
+.coach-tip-start::before { inset-inline-start: calc(var(--target-w, 100px) / 2 - 6px); inset-inline-end: auto; }
+.brief-help { margin: 8px 0 0; font-size: .84rem; }
+
+.coach-tip-below { top: calc(100% + 12px); bottom: auto; }
+.coach-tip-below::before { top: -6px; bottom: auto; }

@@ -11,6 +11,10 @@ interface CoachTargetProps {
   /** The element the note points at. */
   target: ReactNode;
   onDone: () => void;
+  /** Which edge of the target the note lines up with; use 'start' when the target sits near the left edge. */
+  align?: 'start' | 'end';
+  /** Open the note above the target (default) or below it, when the content above is what the note talks about. */
+  side?: 'above' | 'below';
 }
 
 /**
@@ -18,7 +22,7 @@ interface CoachTargetProps {
  * points at it. It never blocks the page or takes focus, and it goes away on "เข้าใจแล้ว", on Escape, or when
  * the caller sets `active` to false (for example because the user did what the note asked).
  */
-export function CoachTarget({ active, title, children, target, onDone }: CoachTargetProps) {
+export function CoachTarget({ active, title, children, target, onDone, align = 'end', side = 'above' }: CoachTargetProps) {
   const reduced = useReducedMotion();
   const wrapRef = useRef<HTMLSpanElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
@@ -31,7 +35,8 @@ export function CoachTarget({ active, title, children, target, onDone }: CoachTa
     if (!wrap) return;
     // Bring the target into view first, otherwise the note appears where nobody is looking.
     const rect = wrap.getBoundingClientRect();
-    if (rect.top < 220 || rect.bottom > window.innerHeight - 40) {
+    const below = side === 'below';
+    if (rect.top < (below ? 80 : 220) || rect.bottom > window.innerHeight - (below ? 280 : 40)) {
       wrap.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
     }
     const place = () => {
@@ -48,7 +53,7 @@ export function CoachTarget({ active, title, children, target, onDone }: CoachTa
       window.removeEventListener('resize', place);
       document.removeEventListener('keydown', onKey);
     };
-  }, [active, reduced]);
+  }, [active, reduced, side]);
 
   return (
     <motion.span ref={wrapRef} className="ai-mode-wrap coach-wrap" animate={active && !reduced ? { scale: [1, 1.1, 1] } : { scale: 1 }} transition={{ duration: 0.6, ease: 'easeInOut', delay: 0.5 }}>
@@ -58,7 +63,7 @@ export function CoachTarget({ active, title, children, target, onDone }: CoachTa
       {target}
       {/* No AnimatePresence here: this sits inside a list row that has its own exit animation, and a nested one would keep that row on screen. */}
       {active && (
-        <motion.div ref={tipRef} className="ai-tip coach-tip" role="region" aria-label={title}
+        <motion.div ref={tipRef} className={`ai-tip coach-tip${align === 'start' ? ' coach-tip-start' : ''}${side === 'below' ? ' coach-tip-below' : ''}`} role="region" aria-label={title}
           initial={reduced ? false : { opacity: 0, scale: 0.92, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ duration: 0.24, ease: 'easeOut', delay: reduced ? 0 : 0.35 }}>
           <p className="ai-tip-title"><Sparkles size={16} aria-hidden="true" /> {title}</p>

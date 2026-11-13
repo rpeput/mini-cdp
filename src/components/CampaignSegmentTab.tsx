@@ -7,6 +7,7 @@ import { checkInvites, type InviteCheck } from '../services/ai/inviteCheck.ts';
 import type { CampaignBrief, CampaignMatch, RawSourceRecord, UnifiedProfile } from '../types/cdp.ts';
 import { staggerDelay } from '../utils/motionSequence.ts';
 import { BriefPanel } from './BriefPanel.tsx';
+import { CoachTarget } from './CoachTarget.tsx';
 import { ScoreMeter, Tick } from './MotionBits.tsx';
 import { StepGuide, type GuideStep } from './StepGuide.tsx';
 import { RecommendationEvidenceDrawer } from './RecommendationEvidenceDrawer.tsx';
@@ -40,6 +41,9 @@ const CAMPAIGN_STEPS: GuideStep[] = [
   { label: 'ตรวจและส่ง', hint: 'อ่านคำเชิญ แล้วกดส่งทางขวา' },
 ];
 
+/** The note on the first recommendation is shown once per page load. */
+let whyCoachSeen = false;
+
 const presetNames =['หมูกระทะ', 'เดินป่า', 'เที่ยวทะเล', 'แฮงเอาท์', 'ตีแบด', 'ติวหนังสือ', 'คอนเสิร์ต'];
 
 export function CampaignSegmentTab({ profiles, records, confidenceThreshold, manuallyApprovedIds, segmentSource, onInspectProfile, brief, onBriefChange, campaignPrompt, onPromptChange, matches, onMatchesChange, busy, isSegmenting, didSegment, onRunSegment, onLaunchCampaign, onGoToSources, runId }: CampaignSegmentTabProps) {
@@ -47,6 +51,9 @@ export function CampaignSegmentTab({ profiles, records, confidenceThreshold, man
   // Rows play in only for a run that finished while this page was open; coming back shows the list as it is.
   const [mountedRun] = useState(runId);
   const playIn = runId !== mountedRun && !reduced;
+  const [coachDismissed, setCoachDismissed] = useState(false);
+  const coachOn = runId !== mountedRun && !whyCoachSeen && !coachDismissed && !busy;
+  const dismissCoach = () => { whyCoachSeen = true; setCoachDismissed(true); };
   const [tier, setTier] = useState('all');
   const [whyProfileId, setWhyProfileId] = useState<string | null>(null);
   // A check belongs to the exact invitation text it read, so editing an invitation discards its result.
@@ -135,7 +142,13 @@ export function CampaignSegmentTab({ profiles, records, confidenceThreshold, man
                       <div className="chip-list"><span className={`chip ${match.tier === 'direct' ? 'chip-positive' : ''}`}>{match.tier === 'direct' ? 'ตรงความสนใจ' : 'ความสนใจใกล้เคียง'}</span><ScoreMeter score={match.matchScore} animateIn={playIn} delay={playIn ? staggerDelay(index) / 1000 + 0.07 : 0} /></div>
                     </div>
                     <p>{match.aiReasoning}</p>
-                    <button type="button" className="text-button" aria-haspopup="dialog" onClick={() => setWhyProfileId(match.profileId)}><Quote size={15} aria-hidden="true" /> ทำไมแนะนำคนนี้ <span className="sr-only">ของ {profile.nickname}</span></button>
+                    {index === 0 && coachOn ? (
+                      <CoachTarget active align="start" side="below" title="อยากรู้ว่าทำไมแนะนำ?" onDone={dismissCoach} target={
+                        <button type="button" className="text-button" aria-haspopup="dialog" onClick={() => { dismissCoach(); setWhyProfileId(match.profileId); }}><Quote size={15} aria-hidden="true" /> ทำไมแนะนำคนนี้ <span className="sr-only">ของ {profile.nickname}</span></button>
+                      }>
+                        ระบบเลือกคนนี้เพราะเจอข้อความที่เกี่ยวกับกิจกรรมนี้ กด <strong>ทำไมแนะนำคนนี้</strong> เพื่อดูข้อความหลักฐานก่อนตัดสินใจ และกด <strong>ดูหรือแก้คำเชิญ</strong> ถ้าอยากเปลี่ยนข้อความที่จะส่ง
+                      </CoachTarget>
+                    ) : <button type="button" className="text-button" aria-haspopup="dialog" onClick={() => setWhyProfileId(match.profileId)}><Quote size={15} aria-hidden="true" /> ทำไมแนะนำคนนี้ <span className="sr-only">ของ {profile.nickname}</span></button>}
                     <details className="invite-details">
                       <summary><ChevronDown size={16} aria-hidden="true" /> ดูหรือแก้คำเชิญ <span className="sr-only">ของ {profile.nickname}</span></summary>
                       <label className="field">ข้อความถึง {profile.nickname}<textarea rows={2} maxLength={500} disabled={busy} value={match.personalizedInvite} onChange={(event) => updateMatch(match.profileId, { personalizedInvite: event.target.value })} /></label>

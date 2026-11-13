@@ -110,9 +110,7 @@ export function AiPerformanceTab() {
         {suites?.map((suite) => (
           <details key={suite.key} className="eval-suite">
             <summary>
-              <strong>{suite.title}</strong>
-              <span className="muted"> · โหมดพื้นฐานถูก {suite.rulesCorrect}/{suite.cases.length}{suite.modelCorrect === null ? ' · AI ยังไม่ตอบ' : ` · AI ถูก ${suite.modelCorrect}/${suite.cases.length}`}</span>
-            </summary>
+              <strong>{suite.title}</strong>            </summary>
             <p className="muted">{suite.question}</p>
             <div className="metrics-scroll">
               <table className="metrics-table eval-table">
