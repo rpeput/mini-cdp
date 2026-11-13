@@ -8,6 +8,8 @@ export type CampaignInteractionStatus = 'accepted' | 'declined' | 'pending';
 
 export type CampaignMatchTier = 'direct' | 'lookalike';
 
+export const AI_UPSTREAM_TIMEOUT_MS = 25_000;
+
 export type AiAction =
   | 'stitch'
   | 'segment'

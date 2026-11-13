@@ -43,11 +43,11 @@ export function BriefPanel({ prompt, brief, disabled, onBriefChange }: BriefPane
   return (
     <div className="brief-panel">
       <button type="button" className="button button-light" disabled={disabled || loading || !prompt.trim()} onClick={read}>
-        <Sparkles size={16} aria-hidden="true" /> {loading ? 'กำลังอ่านโจทย์…' : current ? 'อ่านโจทย์ใหม่' : 'ให้ AI อ่านโจทย์'}
+        <Sparkles size={16} aria-hidden="true" /> {loading ? 'กำลังอ่านโจทย์…' : current ? 'อ่านโจทย์ใหม่' : 'อ่านโจทย์'}
       </button>
       {current && (
         <div className="brief-result" role="status">
-          <p className="muted">{current.source === 'model' ? 'AI อ่านได้ดังนี้ (แต่ละข้อคัดจากโจทย์ของคุณ)' : 'กฎในเครื่องอ่านได้ดังนี้ (อ่านตัวเลขและคำบอกวันที่พบบ่อยเท่านั้น)'}</p>
+          <p className="muted">{current.source === 'model' ? 'AI อ่านได้ดังนี้ (แต่ละข้อคัดจากโจทย์ของคุณ)' : 'ผลจากโหมดพื้นฐาน รองรับตัวเลขและคำบอกวันที่ใช้บ่อย'}</p>
           {current.constraints.length ? (
             <ul className="chip-list" aria-label="เงื่อนไขที่อ่านได้">
               {current.constraints.map((item) => (

@@ -39,7 +39,7 @@ export function readReplyWithRules(reply: string): ReplyReading {
     status,
     confidence: status === 'pending' ? 50 : 70,
     condition: '',
-    reason: status === 'pending' ? 'ไม่พบคำตอบรับหรือปฏิเสธ' : 'พบคำที่ตรงกับกฎคำตอบ',
+    reason: status === 'pending' ? 'ไม่พบคำตอบรับหรือปฏิเสธ' : 'พบคำตอบรับหรือปฏิเสธในข้อความ',
     newPreference: signal ? { category: signal.category, value: signal.value, evidenceQuote: signal.evidenceQuote } : null,
     followUp: '',
     source: 'rules',

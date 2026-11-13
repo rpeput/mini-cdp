@@ -51,17 +51,21 @@ function signalText(likes: readonly string[], dislikes: readonly string[]): stri
  * model runs through the proxy, so without a key every case reports "not answered" instead of a score.
  */
 export async function runEvaluation(profiles: readonly UnifiedProfile[], known: readonly RawSourceRecord[]): Promise<EvalSuite[]> {
-  const nick = (id: string | null) => (id ? profiles.find((profile) => profile.id === id)?.nickname ?? id : 'ไม่ระบุ (ไม่ควรเดา)');
+  const nick = (id: string | null) => (id ? profiles.find((profile) => profile.id === id)?.nickname ?? id : 'ไม่ระบุ');
 
   const ruleIdentity = resolveWithRules(IDENTITY_CASES, profiles, known);
-  const modelIdentity = await resolveIdentities(IDENTITY_CASES, profiles, known);
+  const modelIdentity = (await Promise.all([
+    resolveIdentities(IDENTITY_CASES.slice(0, 3), profiles, known),
+    resolveIdentities(IDENTITY_CASES.slice(3, 6), profiles, known),
+    resolveIdentities(IDENTITY_CASES.slice(6), profiles, known),
+  ])).flatMap((result) => result.suggestions.map((suggestion) => result.source === 'model' ? suggestion : null));
   const identity = finish({
     key: 'identity',
     title: 'ใครเป็นเจ้าของข้อความ',
     question: 'บอกว่าข้อความจากชื่อบัญชีแปลก ๆ เป็นของเพื่อนคนไหน และไม่เดาเมื่อไม่แน่ใจ',
     cases: IDENTITY_CASES.map((item, index) => {
       const rules = ruleIdentity[index];
-      const model = modelIdentity.source === 'model' ? modelIdentity.suggestions[index] : null;
+      const model = modelIdentity[index];
       // A suggestion under the floor is "not sure", the same as naming nobody.
       const named = (suggestion: { profileId: string | null; confidence: number } | null) => (suggestion && suggestion.confidence >= 60 ? suggestion.profileId : null);
       return {

@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { randomUUID } from 'node:crypto';
 import type { AiAction } from '../src/types/cdp.ts';
+import { AI_UPSTREAM_TIMEOUT_MS } from '../src/types/cdp.ts';
 
 const DEFAULT_BASE_URL = 'https://api.maxplus-ai.cc/auto-pools/v1';
 const DEFAULT_MODEL = 'gpt-6-luna';
-const REQUEST_TIMEOUT_MS = 25_000;
 
 type WireApiMode = 'auto' | 'chat' | 'responses';
 
@@ -463,7 +463,7 @@ export default async function handler(
   const systemPrompt = SYSTEM_PROMPTS[action];
   const userPrompt = JSON.stringify(payload);
   const temperature = action === 'simulate_replies' ? 0.5 : 0.15;
-  const deadlineAt = Date.now() + REQUEST_TIMEOUT_MS;
+  const deadlineAt = Date.now() + AI_UPSTREAM_TIMEOUT_MS;
 
   try {
     let result: UpstreamCallResult;

@@ -47,11 +47,11 @@ export function IdentityInbox({ inbox, profiles, records, busy, onLoadSamples, o
         <div className="inbox-actions">
           <button className="button button-light" disabled={busy} onClick={onLoadSamples}><Download size={16} aria-hidden="true" /> นำเข้าข้อความกำกวมตัวอย่าง</button>
           <button className="button button-primary" disabled={busy || loading || !inbox.length} onClick={propose}>
-            <Sparkles size={16} aria-hidden="true" /> {loading ? 'กำลังอ่านชื่อและข้อความ…' : asked ? 'เสนอเจ้าของใหม่' : 'ให้ AI เสนอเจ้าของ'}
+            <Sparkles size={16} aria-hidden="true" /> {loading ? 'กำลังอ่านชื่อและข้อความ…' : asked ? 'เสนอเจ้าของใหม่' : 'เสนอเจ้าของข้อความ'}
           </button>
         </div>
       </div>
-      {source && <p className="muted inbox-source" role="status">{source === 'model' ? 'เสนอโดยโมเดล ตรวจแล้วว่าหลักฐานคัดลอกมาจากข้อความจริง' : 'เสนอโดยกฎในเครื่อง (โมเดลไม่พร้อมหรือคำตอบไม่ผ่านการตรวจ) กฎอ่านได้เฉพาะชื่อไทยและชื่อบัญชีที่เคยพบ'}</p>}
+      {source && <p className="muted inbox-source" role="status">{source === 'model' ? 'เสนอโดยโมเดล ตรวจแล้วว่าหลักฐานคัดลอกมาจากข้อความจริง' : 'โหมดพื้นฐานจับคู่จากชื่อไทยและชื่อบัญชีที่เคยพบ'}</p>}
       {inbox.length ? (
         <ul className="inbox-list">
           {inbox.map((record) => {
@@ -90,7 +90,7 @@ export function IdentityInbox({ inbox, profiles, records, busy, onLoadSamples, o
           })}
         </ul>
       ) : (
-        <div className="empty"><UserCheck aria-hidden="true" /><h3>ไม่มีข้อความรอยืนยัน</h3><p>กด “นำเข้าข้อความกำกวมตัวอย่าง” เพื่อลองให้ AI จับคู่ชื่อที่สะกดต่างกัน</p></div>
+        <div className="empty"><UserCheck aria-hidden="true" /><h3>ไม่มีข้อความรอยืนยัน</h3><p>กด “นำเข้าข้อความกำกวมตัวอย่าง” เพื่อลองจับคู่ชื่อที่สะกดต่างกัน</p></div>
       )}
     </section>
   );

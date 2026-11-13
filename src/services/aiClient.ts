@@ -1,8 +1,32 @@
-import type { AiAction, AiProxyResponse } from '../types/cdp.ts';
+import { AI_UPSTREAM_TIMEOUT_MS, type AiAction, type AiProxyResponse } from '../types/cdp.ts';
 import { estimateTokens, markAiInvalid, type AiOutcome, recordAiCall } from './aiMetrics.ts';
 
-export const AI_PROXY_TIMEOUT_MS = 18_000;
+export const AI_PROXY_TIMEOUT_MS = AI_UPSTREAM_TIMEOUT_MS + 3_000;
 let sessionId: string | undefined;
+const modeKey = 'gather-ai-enabled';
+let aiEnabled = true;
+try {
+  aiEnabled = globalThis.sessionStorage?.getItem(modeKey) !== 'off';
+} catch {
+  // Storage may be unavailable. Keep the setting in memory for this visit.
+}
+let aiRequests = new AbortController();
+
+export function getAiEnabled(): boolean {
+  return aiEnabled;
+}
+
+export function setAiEnabled(enabled: boolean): void {
+  if (aiEnabled === enabled) return;
+  aiEnabled = enabled;
+  if (enabled) aiRequests = new AbortController();
+  else aiRequests.abort();
+  try {
+    globalThis.sessionStorage?.setItem(modeKey, enabled ? 'on' : 'off');
+  } catch {
+    // The in-memory setting still applies.
+  }
+}
 
 export interface AiRawResult {
   data: unknown;
@@ -24,11 +48,13 @@ export interface AiCallResult<T> {
  * reports that the answer failed validation with `markAiInvalid(result.metricId)`.
  */
 export async function callAiRaw(action: AiAction, payload: unknown, timeoutMs = AI_PROXY_TIMEOUT_MS): Promise<AiRawResult | null> {
+  if (!aiEnabled) return null;
+  const modeSignal = aiRequests.signal;
   const startedAt = performance.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  const body = JSON.stringify({ action, payload });
   try {
+    const body = JSON.stringify({ action, payload });
     const response = await fetch('/api/ai', {
       method: 'POST',
       headers: {
@@ -36,9 +62,10 @@ export async function callAiRaw(action: AiAction, payload: unknown, timeoutMs = 
         'x-gather-ai-session': sessionId ??= crypto.randomUUID(),
       },
       body,
-      signal: controller.signal,
+      signal: AbortSignal.any([controller.signal, modeSignal]),
     });
     const parsed = response.ok ? ((await response.json()) as AiProxyResponse) : null;
+    if (modeSignal.aborted) return null;
     const latencyMs = Math.round(performance.now() - startedAt);
     if (!parsed || parsed.fallback || !parsed.data) {
       recordAiCall({ action, latencyMs, outcome: 'unavailable', inputTokens: 0, outputTokens: 0, estimated: false });
@@ -56,6 +83,7 @@ export async function callAiRaw(action: AiAction, payload: unknown, timeoutMs = 
     });
     return { data: parsed.data, model: parsed.model, metricId };
   } catch {
+    if (modeSignal.aborted) return null;
     recordAiCall({ action, latencyMs: Math.round(performance.now() - startedAt), outcome: 'unavailable', inputTokens: 0, outputTokens: 0, estimated: false });
     return null;
   } finally {

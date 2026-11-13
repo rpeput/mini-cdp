@@ -61,7 +61,7 @@ export function resolveWithRules(
       recordId: record.id,
       profileId: null,
       confidence: 0,
-      reason: hits.length ? 'มีหลายคนที่เข้าข่าย จึงไม่เลือก' : 'กฎในเครื่องไม่พบชื่อที่ตรงกัน',
+      reason: hits.length ? 'มีหลายคนที่เข้าข่าย จึงไม่เลือก' : 'ไม่พบชื่อหรือชื่อบัญชีที่ตรงกัน',
       clue: '',
       source: 'rules',
     };

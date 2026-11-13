@@ -1,4 +1,4 @@
-import { ChevronLeft, Database, LayoutDashboard, Gauge, Layers3, Menu, Radio, RotateCcw, SquareActivity, Users, Workflow, X } from 'lucide-react';
+import { ChevronLeft, Database, LayoutDashboard, Gauge, Layers3, Menu, Radio, RotateCcw, SquareActivity, Users, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { WorkflowTabId } from '../types/cdp.ts';
@@ -6,7 +6,6 @@ import type { WorkflowTabId } from '../types/cdp.ts';
 interface TopNavbarProps {
   activeTab: WorkflowTabId;
   onTabChange: (tab: WorkflowTabId) => void;
-  onToggleXRay: () => void;
   onResetDemo: () => void;
   onReturnToLanding: () => void;
   busy: boolean;
@@ -21,7 +20,7 @@ const pages = [
   { id: 'ai', label: 'AI ช่วยอะไร', icon: Gauge },
 ] as const;
 
-export function TopNavbar({ activeTab, onTabChange, onToggleXRay, onResetDemo, onReturnToLanding, busy }: TopNavbarProps) {
+export function TopNavbar({ activeTab, onTabChange, onResetDemo, onReturnToLanding, busy }: TopNavbarProps) {
   const [open, setOpen] = useState(false);
   const indicatorId = useId();
   const menuButton = useRef<HTMLButtonElement>(null);
@@ -74,7 +73,6 @@ export function TopNavbar({ activeTab, onTabChange, onToggleXRay, onResetDemo, o
           ))}
         </nav>
         <div className="workspace-utilities">
-          <button className="nav-item" onClick={run(onToggleXRay)}><Workflow size={17} aria-hidden="true" /> บันทึกระบบ</button>
           <button className="nav-item" disabled={busy} onClick={run(onResetDemo)}><RotateCcw size={17} aria-hidden="true" /> เริ่มเดโมใหม่</button>
           <button className="nav-item" onClick={run(onReturnToLanding)}><ChevronLeft size={17} aria-hidden="true" /> กลับหน้าแรก</button>
         </div>

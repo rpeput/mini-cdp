@@ -2,6 +2,7 @@ import { Check, FlaskConical, Gauge, Minus, RotateCcw, X } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 import { INITIAL_PROFILES, RAW_SOURCE_RECORDS } from '../data/seedData.ts';
 import { type EvalSuite, runEvaluation } from '../services/ai/evaluation.ts';
+import { getAiEnabled } from '../services/aiClient.ts';
 import { clearAiCalls, getAiCalls, subscribeAiCalls, summarizeAiCalls } from '../services/aiMetrics.ts';
 import type { AiAction } from '../types/cdp.ts';
 
@@ -31,16 +32,18 @@ function Verdict({ ok }: { ok: boolean | null }) {
 
 export function AiPerformanceTab() {
   const calls = useSyncExternalStore(subscribeAiCalls, getAiCalls);
-  const [suites, setSuites] = useState<EvalSuite[] | null>(null);
+  const [result, setResult] = useState<{ suites: EvalSuite[]; usedAi: boolean } | null>(null);
   const [running, setRunning] = useState(false);
+  const suites = running ? null : result?.suites;
   const rows = summarizeAiCalls(calls, noPrices);
 
   async function run() {
     if (running) return;
+    const usedAi = getAiEnabled();
     setRunning(true);
     try {
       // The test always uses the original friend list, so the score does not change as you edit the demo.
-      setSuites(await runEvaluation(INITIAL_PROFILES, RAW_SOURCE_RECORDS));
+      setResult({ suites: await runEvaluation(INITIAL_PROFILES, RAW_SOURCE_RECORDS), usedAi });
     } finally {
       setRunning(false);
     }
@@ -49,7 +52,7 @@ export function AiPerformanceTab() {
   return (
     <section aria-labelledby="ai-title">
       <header className="page-heading">
-        <div><h1 id="ai-title">AI ช่วยอะไรในแอปนี้</h1><p>ดูว่า AI ช่วยงานไหนไปแล้วบ้าง และลองเทียบกับวิธีเดิมที่ใช้กฎง่าย ๆ ว่าใครตอบถูกกว่า</p></div>
+        <div><h1 id="ai-title">AI ช่วยอะไรในแอปนี้</h1><p>ดูว่า AI ช่วยงานไหนบ้าง และเปรียบเทียบผลกับโหมดพื้นฐาน</p></div>
       </header>
 
       <div className="surface panel">
@@ -74,7 +77,7 @@ export function AiPerformanceTab() {
                 ))}</tbody>
               </table>
             </div>
-            <p className="muted">วิธีสำรองคือให้ระบบใช้กฎง่าย ๆ ในเครื่องแทน เมื่อ AI ยังไม่พร้อมหรือตอบมาในรูปแบบที่ใช้ไม่ได้ งานของคุณเดินต่อได้เสมอ</p>
+            <p className="muted">Gather ใช้โหมดพื้นฐานเมื่อปิด AI หรือเมื่อใช้คำตอบจาก AI ไม่ได้</p>
             <details className="tech-details">
               <summary>รายละเอียดสำหรับผู้พัฒนา</summary>
               <div className="metrics-scroll">
@@ -95,27 +98,25 @@ export function AiPerformanceTab() {
               {calls.some((call) => call.estimated) && <p className="muted">บางแถวใช้ตัวเลข token ที่ประมาณจากความยาวข้อความ เพราะบริการ AI ไม่ได้ส่งตัวเลขจริงมา</p>}
             </details>
           </>
-        ) : <div className="empty"><Gauge aria-hidden="true" /><h3>ยังไม่ได้ใช้ AI ในรอบนี้</h3><p>ลองกด “แนะนำผู้รับคำเชิญ” หรือ “ให้ AI อ่านโจทย์” ในหน้าสร้างแคมเปญ แล้วกลับมาดูที่นี่</p></div>}
+        ) : <div className="empty"><Gauge aria-hidden="true" /><h3>ยังไม่ได้ใช้ AI ในรอบนี้</h3><p>เปิด AI แล้วลองกด “แนะนำผู้รับคำเชิญ” หรือ “อ่านโจทย์” ในหน้าสร้างแคมเปญ</p></div>}
       </div>
 
       <div className="surface panel eval-panel">
         <div className="response-heading">
-          <div><h2><FlaskConical size={19} aria-hidden="true" /> ลองทดสอบกับข้อความที่ตีความยาก</h2><p>24 ข้อความตัวอย่างที่เรารู้เฉลยอยู่แล้ว ให้ทั้งวิธีเดิมและ AI ตอบ แล้วดูว่าใครถูกกว่า</p></div>
+          <div><h2><FlaskConical size={19} aria-hidden="true" /> ลองทดสอบกับข้อความที่ตีความยาก</h2><p>เทียบผลจากโหมดพื้นฐานและ AI กับเฉลยของข้อความตัวอย่าง 24 ข้อความ</p></div>
           <button className="button button-primary" disabled={running} onClick={run}>{running ? 'กำลังทดสอบ…' : suites ? 'ทดสอบอีกครั้ง' : 'เริ่มทดสอบ'}</button>
         </div>
-        {!suites && <p className="muted">วิธีเดิมคือกฎง่าย ๆ เช่น เห็นคำว่า “หมูกระทะ” ก็ถือว่าชอบหมูกระทะ ซึ่งพลาดได้เมื่อเพื่อนพิมพ์ว่า “เลิกกินหมูกระทะแล้ว” การทดสอบนี้เรียก AI 16 ครั้ง</p>}
+        {running && <p className="muted" role="status">กำลังทดสอบข้อความตัวอย่าง 24 ข้อความ</p>}
         {suites?.map((suite) => (
           <details key={suite.key} className="eval-suite" open>
             <summary>
               <strong>{suite.title}</strong>
-              <span className="chip">วิธีเดิมถูก {suite.rulesCorrect} จาก {suite.cases.length}</span>
-              <span className={`chip ${suite.modelCorrect === null ? 'chip-waiting' : 'chip-positive'}`}>{suite.modelCorrect === null ? 'AI ยังไม่ตอบ' : `AI ถูก ${suite.modelCorrect} จาก ${suite.modelAnswered}`}</span>
             </summary>
             <p className="muted">{suite.question}</p>
             <div className="metrics-scroll">
               <table className="metrics-table eval-table">
-                <caption className="sr-only">{suite.title}: เทียบเฉลย วิธีเดิม และ AI</caption>
-                <thead><tr><th scope="col">ข้อความ</th><th scope="col">เฉลย</th><th scope="col">วิธีเดิม</th><th scope="col">AI</th></tr></thead>
+                <caption className="sr-only">{suite.title}: เทียบเฉลย โหมดพื้นฐาน และ AI</caption>
+                <thead><tr><th scope="col">ข้อความ</th><th scope="col">เฉลย</th><th scope="col">โหมดพื้นฐาน</th><th scope="col">AI</th></tr></thead>
                 <tbody>{suite.cases.map((item) => (
                   <tr key={item.id}>
                     <th scope="row"><span>{item.input}</span><small className="muted">{item.note}</small></th>
@@ -129,7 +130,9 @@ export function AiPerformanceTab() {
           </details>
         ))}
         {suites && suites.every((suite) => suite.modelCorrect === null) && (
-          <p className="muted" role="status">ตอนนี้ AI ยังไม่ตอบ จึงเห็นแค่คะแนนของวิธีเดิม ถ้าคุณเป็นผู้พัฒนา ให้ตั้งค่า <code>LLM_API_KEY</code> ให้บริการ AI ก่อน แล้วทดสอบอีกครั้ง</p>
+          <p className="muted" role="status">{result?.usedAi
+            ? 'รอบนี้ไม่มีคำตอบจาก AI ที่ใช้ได้ กดทดสอบอีกครั้งเพื่อลองใหม่'
+            : 'รอบนี้ทดสอบด้วยโหมดพื้นฐาน เปิด AI แล้วกดทดสอบอีกครั้งเพื่อเทียบผล'}</p>
         )}
       </div>
     </section>

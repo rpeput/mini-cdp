@@ -51,7 +51,7 @@ export function CampaignSegmentTab({ profiles, records, confidenceThreshold, man
   const selected = matches.filter((match) => match.selected);
   const visible = matches.filter((match) => tier === 'all' || match.tier === tier);
   const hasBlankInvite = selected.some((match) => !match.personalizedInvite.trim());
-  const sourceLabel = segmentSource === 'model' ? 'ค้นหาด้วยโมเดล' : 'ค้นหาด้วยกฎในเครื่อง';
+  const sourceLabel = segmentSource === 'model' ? 'ค้นหาด้วยโมเดล' : 'ค้นหาด้วยโหมดพื้นฐาน';
   const whyMatch = matches.find((match) => match.profileId === whyProfileId) ?? null;
   const whyProfile = profiles.find((profile) => profile.id === whyProfileId) ?? null;
   const checkFor = (match: CampaignMatch) => (checks[match.profileId]?.text === match.personalizedInvite ? checks[match.profileId].check : null);
@@ -155,10 +155,10 @@ export function CampaignSegmentTab({ profiles, records, confidenceThreshold, man
           <h2>สรุปคำเชิญ</h2>
           <p>ส่งข้อความจำลองผ่าน LINE ให้เฉพาะเพื่อนที่คุณเลือก</p>
           <dl><div><dt>ช่องทาง</dt><dd lang="en">LINE · Demo</dd></div><div><dt>ผู้รับที่เลือก</dt><dd><Tick value={selected.length} /> คน</dd></div></dl>
-          <button className="button button-light" disabled={busy || checking || !selected.length || hasBlankInvite} onClick={runCheck}><Sparkles size={16} aria-hidden="true" /> {checking ? 'กำลังตรวจคำเชิญ…' : 'ตรวจคำเชิญด้วย AI'}</button>
+          <button className="button button-light" disabled={busy || checking || !selected.length || hasBlankInvite} onClick={runCheck}><Sparkles size={16} aria-hidden="true" /> {checking ? 'กำลังตรวจคำเชิญ…' : 'ตรวจคำเชิญ'}</button>
           {checked.length > 0 && (
             <p className="summary-hint" role="status">
-              {checkSource === 'model' ? 'ตรวจโดยโมเดล' : 'ตรวจด้วยกฎในเครื่อง'}: ผ่าน {checked.length - flagged} · มีข้อสังเกต {flagged}{flagged > 0 ? ' ดูใต้คำเชิญของแต่ละคน ส่งต่อได้หากเห็นว่าไม่เป็นปัญหา' : ''}
+              {checkSource === 'model' ? 'ตรวจโดยโมเดล' : 'ตรวจด้วยโหมดพื้นฐาน'}: ผ่าน {checked.length - flagged} · มีข้อสังเกต {flagged}{flagged > 0 ? ' ดูใต้คำเชิญของแต่ละคน ส่งต่อได้หากเห็นว่าไม่เป็นปัญหา' : ''}
             </p>
           )}
           <button className="button button-primary" disabled={busy || !selected.length || hasBlankInvite} onClick={() => onLaunchCampaign(campaignPrompt.trim(), matches)}>ส่งคำเชิญจำลอง <ArrowRight size={17} aria-hidden="true" /></button>

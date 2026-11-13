@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import aiHandler from '../api/ai.ts';
+import { callAiRaw, setAiEnabled } from '../src/services/aiClient.ts';
 import { IDENTITY_CASES, REPLY_CASES, SIGNAL_CASES } from '../src/data/aiFixtures.ts';
 import { INITIAL_PROFILES, RAW_SOURCE_RECORDS } from '../src/data/seedData.ts';
 import { clearAiCalls, costOf, getAiCalls, percentile, summarizeAiCalls } from '../src/services/aiMetrics.ts';
@@ -16,6 +17,29 @@ import { applyPastedReply, linkUnlinkedRecord } from '../src/utils/aiActions.ts'
 import { queryProfiles } from '../src/utils/listViews.ts';
 
 const noModel = (context) => context.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ fallback: true })));
+test('turning off AI skips new requests, cancels pending reads and allows requests after re-enabling', async (context) => {
+  const fetchMock = context.mock.method(globalThis, 'fetch', async (_, { signal }) => {
+    if (fetchMock.mock.callCount() === 0) {
+      await new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+    }
+    return Response.json({ fallback: false, data: { constraints: [] } });
+  });
+  clearAiCalls();
+  try {
+    const pending = callAiRaw('parse_brief', { prompt: 'ชวนเดินป่า' });
+    setAiEnabled(false);
+    assert.equal(await pending, null);
+    assert.equal(await callAiRaw('segment', {}), null);
+    assert.equal(fetchMock.mock.callCount(), 1);
+    assert.equal(getAiCalls().length, 0);
+    setAiEnabled(true);
+    assert.deepEqual((await callAiRaw('parse_brief', {}))?.data, { constraints: [] });
+    assert.equal(fetchMock.mock.callCount(), 2);
+  } finally {
+    setAiEnabled(true);
+    clearAiCalls();
+  }
+});
 test('the AI proxy sets low effort for DeepSeek and forwards the Gather session to OpenCode Go', async (context) => {
   const session = '12345678-1234-4234-8234-123456789abc';
   context.mock.method(globalThis, 'fetch', async (url, options) => {
@@ -337,8 +361,11 @@ test('without a model the evaluation reports rule scores only', async (context) 
 
 test('a model that matches the gold answers scores full marks and the evaluation says so', async (context) => {
   clearAiCalls();
+  const requests = [];
   answerWith(context, (action, payload) => {
+    requests.push(action);
     if (action === 'resolve_identity') {
+      assert.ok(payload.records.length <= 3);
       return { resolutions: payload.records.map((record) => {
         const gold = IDENTITY_CASES.find((item) => item.id === record.id);
         return { recordId: record.id, profileId: gold.gold, confidence: gold.gold ? 90 : 20, reason: 'ตามเฉลย', clue: gold.gold ? record.handle : '' };
@@ -354,7 +381,16 @@ test('a model that matches the gold answers scores full marks and the evaluation
       ...gold.dislikes.map((id) => ({ id, polarity: 'dislikes', evidenceQuote: payload.text, reason: '' })),
     ] };
   });
+  setAiEnabled(false);
+  try {
+    const basic = await runEvaluation(INITIAL_PROFILES, RAW_SOURCE_RECORDS);
+    assert.ok(basic.every((suite) => suite.modelAnswered === 0));
+    assert.equal(requests.length, 0);
+  } finally {
+    setAiEnabled(true);
+  }
   const suites = await runEvaluation(INITIAL_PROFILES, RAW_SOURCE_RECORDS);
+  assert.equal(requests.filter((action) => action === 'resolve_identity').length, 3);
   assert.deepEqual(suites.map((suite) => [suite.key, suite.modelCorrect, suite.modelAnswered]), [['identity', 9, 9], ['reply', 8, 8], ['signal', 7, 7]]);
   assert.ok(suites.every((suite) => suite.rulesCorrect < suite.cases.length));
   assert.ok(getAiCalls().every((call) => call.outcome === 'model'));

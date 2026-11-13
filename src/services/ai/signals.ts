@@ -23,7 +23,7 @@ const TAXONOMY_IDS = new Set(SIGNAL_TAXONOMY.map((item) => item.id));
 
 /** Keyword baseline: everything it finds is a "like", because it cannot read negation or tense. */
 export function readSignalsWithRules(text: string): SignalReading[] {
-  return extractRuleSignals(text).map((signal) => ({ id: signal.ruleId, polarity: 'likes', evidenceQuote: signal.evidenceQuote, reason: 'พบคำที่ตรงกับกฎ' }));
+  return extractRuleSignals(text).map((signal) => ({ id: signal.ruleId, polarity: 'likes', evidenceQuote: signal.evidenceQuote, reason: 'พบคำที่ตรงกับความสนใจ' }));
 }
 
 export function parseSignalReading(raw: unknown, text: string): SignalReading[] | null {

@@ -132,7 +132,7 @@ export function UnifiedProfilesTab({ profiles, confidenceThreshold, manuallyAppr
         </form>
         {(aiNote || anyTerms.length > 0) && (
           <div className="ai-filter-note" role="status">
-            {aiNote && <p>{aiNote.source === 'model' ? 'AI แปลงคำถามเป็นตัวกรอง' : 'กฎในเครื่องแปลงคำถามเป็นตัวกรอง'}: {aiNote.explanation}</p>}
+            {aiNote && <p>{aiNote.source === 'model' ? 'AI แปลงคำถามเป็นตัวกรอง' : 'โหมดพื้นฐานเลือกตัวกรองจากคำที่พบ'}: {aiNote.explanation}</p>}
             {anyTerms.length > 0 && (
               <p className="chip-list">มีคำใดคำหนึ่ง: {anyTerms.map((term) => <span key={term} className="chip">{term}</span>)}
                 <button type="button" className="chip-remove" aria-label="ลบตัวกรองคำใดคำหนึ่ง" onClick={() => table.setFilter('anyTerms', '')}><X size={13} aria-hidden="true" /></button></p>

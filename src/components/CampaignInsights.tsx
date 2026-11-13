@@ -32,13 +32,13 @@ export function CampaignInsights({ campaign, profiles, onInspectProfile }: Campa
   return (
     <section className="surface panel campaign-insights" aria-labelledby="insights-title">
       <div className="response-heading">
-        <div><h2 id="insights-title"><Lightbulb size={19} aria-hidden="true" /> สรุปผลพร้อมแหล่งอ้างอิง</h2><p>AI อธิบายว่าทำไมตอบแบบนี้ ยอดตัวเลขนับโดยแอป และทุกข้อสรุปชี้กลับไปที่คำตอบจริง</p></div>
-        <button className="button button-light" disabled={!hasReplies || loading} onClick={run}><Sparkles size={16} aria-hidden="true" /> {loading ? 'กำลังสรุป…' : summary ? 'สรุปใหม่' : 'สรุปผลด้วย AI'}</button>
+        <div><h2 id="insights-title"><Lightbulb size={19} aria-hidden="true" /> สรุปผลพร้อมแหล่งอ้างอิง</h2><p>ดูเหตุผลที่เพื่อนตอบ พร้อมข้อความอ้างอิงจากคำตอบจริง</p></div>
+        <button className="button button-light" disabled={!hasReplies || loading} onClick={run}><Sparkles size={16} aria-hidden="true" /> {loading ? 'กำลังสรุป…' : summary ? 'สรุปใหม่' : 'สรุปผล'}</button>
       </div>
       {!hasReplies && <p className="muted">ยังไม่มีคำตอบให้สรุป กดจำลองคำตอบ หรือวางคำตอบจริงของเพื่อนก่อน</p>}
       {summary && (
         <>
-          <p className="muted" role="status">{summary.source === 'model' ? 'สรุปโดยโมเดล ตัดข้อที่อ้างคนนอกแคมเปญออกแล้ว' : 'สรุปด้วยกฎในเครื่อง จัดกลุ่มตามเหตุผลที่บันทึกไว้เท่านั้น'}</p>
+          <p className="muted" role="status">{summary.source === 'model' ? 'สรุปโดยโมเดล ตัดข้อที่อ้างคนนอกแคมเปญออกแล้ว' : 'โหมดพื้นฐานจัดกลุ่มตามเหตุผลที่บันทึกไว้'}</p>
           {summary.points.length ? (
             <ul className="ai-points">
               {summary.points.map((point, index) => (

@@ -12,12 +12,11 @@ import { type ToastItem, ToastRegion } from './components/ToastRegion.tsx';
 import { DemoAccountBanner } from './components/DemoAccountBanner.tsx';
 import { TopNavbar } from './components/TopNavbar.tsx';
 import { UnifiedProfilesTab } from './components/UnifiedProfilesTab.tsx';
-import { XRayDrawer } from './components/XRayDrawer.tsx';
 import { IDENTITY_CASES } from './data/aiFixtures.ts';
 import { CAMPAIGN_PRESETS, INITIAL_PROFILES, RAW_SOURCE_RECORDS } from './data/seedData.ts';
 import { runIdentityStitching, segmentCampaign, simulateCampaignResponses } from './services/aiEngine.ts';
 import { applyBriefToMatches } from './services/ai/brief.ts';
-import type { CampaignBrief, CampaignMatch, CampaignRecord, DataSourceType, PipelineLog, RawSourceRecord, UnifiedProfile, UnlinkedRecord, WorkflowTabId } from './types/cdp.ts';
+import type { CampaignBrief, CampaignMatch, CampaignRecord, DataSourceType, RawSourceRecord, UnifiedProfile, UnlinkedRecord, WorkflowTabId } from './types/cdp.ts';
 import { applyPastedReply, linkUnlinkedRecord, type PastedReply } from './utils/aiActions.ts';
 import { buildReplySummaries, createCampaign, recordSentInvitations } from './utils/campaignFlow.ts';
 import { buildStitchFx, type StitchFx } from './utils/motionSequence.ts';
@@ -31,7 +30,6 @@ interface DemoData {
   records: RawSourceRecord[];
   profiles: UnifiedProfile[];
   campaigns: CampaignRecord[];
-  logs: PipelineLog[];
   approved: string[];
   threshold: number;
   /** Messages whose author is not known yet. */
@@ -39,14 +37,14 @@ interface DemoData {
 }
 
 function initialDemo(): DemoData {
-  return { profiles: INITIAL_PROFILES, records: RAW_SOURCE_RECORDS, campaigns: [], logs: [], approved: [], threshold: 75, inbox: [] };
+  return { profiles: INITIAL_PROFILES, records: RAW_SOURCE_RECORDS, campaigns: [], approved: [], threshold: 75, inbox: [] };
 }
 
 function loadDemo(): DemoData {
   try {
     const saved = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null') as DemoData | null;
     if (saved && Array.isArray(saved.profiles) && Array.isArray(saved.records) &&
-      Array.isArray(saved.campaigns) && Array.isArray(saved.logs) && Array.isArray(saved.approved) &&
+      Array.isArray(saved.campaigns) && Array.isArray(saved.approved) &&
       Number.isFinite(saved.threshold)) return { ...saved, inbox: Array.isArray(saved.inbox) ? saved.inbox : [] };
   } catch {
     // The demo remains usable if storage is blocked or its contents are invalid.
@@ -56,7 +54,7 @@ function loadDemo(): DemoData {
 
 export function App() {
   const [demo, setDemo] = useState(loadDemo);
-  const { profiles, records, campaigns, logs, threshold, approved, inbox } = demo;
+  const { profiles, records, campaigns, threshold, approved, inbox } = demo;
   const manuallyApprovedIds = new Set(approved);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState<WorkflowTabId>('profiles');
@@ -70,7 +68,6 @@ export function App() {
   const [brief, setBrief] = useState<CampaignBrief | null>(null);
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
   const [inspectedProfileId, setInspectedProfileId] = useState<string | null>(null);
-  const [isXRayOpen, setIsXRayOpen] = useState(false);
   const [operation, setOperation] = useState<'stitch' | 'segment' | 'simulate' | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const mainRef = useRef<HTMLElement>(null);
@@ -174,10 +171,10 @@ export function App() {
     setOperation('stitch');
     try {
       const result = await runIdentityStitching(profiles, records);
-      setDemo((current) => ({ ...current, profiles: result.profiles, logs: [...result.logs, ...current.logs].slice(0, 60) }));
+      setDemo((current) => ({ ...current, profiles: result.profiles }));
       clearMatches();
       setStitchFx(buildStitchFx(++fxCounter.current, profiles, result.profiles, records));
-      notify('success', `รวมข้อมูลแล้ว ${result.stitchedCount} โปรไฟล์`, result.usedFallback ? 'สกัดด้วยกฎจากข้อความตัวอย่าง' : 'ตรวจข้อความอ้างอิงจากผลวิเคราะห์ AI แล้ว');
+      notify('success', `รวมข้อมูลแล้ว ${result.stitchedCount} โปรไฟล์`, result.usedFallback ? 'รวมข้อมูลจากคำที่พบในข้อความตัวอย่าง' : 'ตรวจข้อความอ้างอิงจากผลวิเคราะห์ AI แล้ว');
     } catch {
       notify('warning', 'รวมข้อมูลไม่สำเร็จ', 'ข้อมูลยังอยู่ในคิว ลองกดประมวลผลอีกครั้ง');
     } finally {
@@ -230,7 +227,6 @@ export function App() {
       }));
       const activeBrief = brief && brief.prompt === prompt ? brief : null;
       const result = await segmentCampaign(prompt, reviewedProfiles, activeBrief);
-      setDemo((current) => ({ ...current, logs: [...result.logs, ...current.logs].slice(0, 60) }));
       setMatches(applyBriefToMatches(result.matches, activeBrief, profiles));
       setDidSegment(true);
       setMatchRun((n) => n + 1);
@@ -271,7 +267,6 @@ export function App() {
       setDemo((current) => ({
         ...current,
         profiles: result.profiles,
-        logs: [...result.logs, ...current.logs].slice(0, 60),
         campaigns: current.campaigns.map((campaign) => campaign.id === id ? {
           ...campaign, simulated: true, replies,
           closedLoopUpdatesCount: replies.filter((reply) => reply.status !== 'pending').length,
@@ -330,11 +325,11 @@ export function App() {
       {isLoggedIn ? (
         <div className="workspace">
           <a href="#main-content" className="skip-link">ข้ามไปยังเนื้อหา</a>
-          <TopNavbar activeTab={activeTab} onTabChange={setActiveTab} onToggleXRay={() => setIsXRayOpen(true)}
+          <TopNavbar activeTab={activeTab} onTabChange={setActiveTab}
             onResetDemo={resetDemo} onReturnToLanding={() => setIsLoggedIn(false)} busy={busy} />
           <main id="main-content" ref={mainRef} tabIndex={-1} className="workspace-main">
             <div className="workspace-content">
-            <DemoAccountBanner activeTab={activeTab} friendCount={profiles.length} onTabChange={setActiveTab} />
+            <DemoAccountBanner activeTab={activeTab} onTabChange={setActiveTab} />
             <motion.div key={activeTab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.27, ease: 'easeOut' }}>
               {activeTab === 'overview' && <OverviewTab profiles={profiles} records={records} campaigns={campaigns} inbox={inbox} confidenceThreshold={threshold}
                 manuallyApprovedIds={manuallyApprovedIds} onNavigate={(tab, anchor) => {
@@ -369,8 +364,7 @@ export function App() {
           </main>
           <ProfileInspectorDrawer profile={inspectedProfile} records={records} onClose={() => setInspectedProfileId(null)}
             confidenceThreshold={threshold} manuallyApprovedIds={manuallyApprovedIds} onAttributeDecision={decideAttribute} busy={busy} />
-          <XRayDrawer open={isXRayOpen} onClose={() => setIsXRayOpen(false)} pipelineLogs={logs} />
-          <ToastRegion toasts={toasts} onDismiss={dismissToast} suppressed={inspectedProfile !== null || isXRayOpen} />
+          <ToastRegion toasts={toasts} onDismiss={dismissToast} suppressed={inspectedProfile !== null} />
         </div>
       ) : (
         <LandingPage onEnterWorkspace={(tab, prompt) => {
