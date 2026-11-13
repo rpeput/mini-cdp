@@ -333,6 +333,7 @@ async function callChatCompletions(params: {
     },
     body: JSON.stringify({
       model: params.model,
+      ...(params.model === 'deepseek-v4.1-flash' && { reasoning_effort: 'low' }),
       messages: [
         { role: 'system', content: params.systemPrompt },
         { role: 'user', content: params.userPrompt },

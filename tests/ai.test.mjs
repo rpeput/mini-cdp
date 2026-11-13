@@ -16,13 +16,14 @@ import { applyPastedReply, linkUnlinkedRecord } from '../src/utils/aiActions.ts'
 import { queryProfiles } from '../src/utils/listViews.ts';
 
 const noModel = (context) => context.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ fallback: true })));
-test('the OpenCode Go proxy forwards a stable Gather session without forwarding it to other providers', async (context) => {
+test('the AI proxy sets low effort for DeepSeek and forwards the Gather session to OpenCode Go', async (context) => {
   const session = '12345678-1234-4234-8234-123456789abc';
   context.mock.method(globalThis, 'fetch', async (url, options) => {
     assert.equal(url, `${process.env.LLM_BASE_URL}/chat/completions`);
     const isGo = url.startsWith('https://opencode.ai/inference/go/');
     assert.equal(options.headers['x-opencode-session'], isGo ? session : undefined);
     assert.equal(options.headers['User-Agent'], isGo ? 'Gather/1.0' : undefined);
+    assert.equal(JSON.parse(options.body).reasoning_effort, isGo ? 'low' : undefined);
     return Response.json({ choices: [{ message: { content: '{"constraints":[],"clarifyingQuestion":""}' } }] });
   });
   const keys = ['LLM_API_KEY', 'LLM_BASE_URL', 'LLM_WIRE_API', 'LLM_MODEL'];
@@ -30,9 +31,9 @@ test('the OpenCode Go proxy forwards a stable Gather session without forwarding 
   try {
     process.env.LLM_API_KEY = 'test-key';
     process.env.LLM_WIRE_API = 'chat';
-    process.env.LLM_MODEL = 'deepseek-v4.1-flash';
     for (const baseUrl of ['https://opencode.ai/inference/go/openai/v1', 'https://example.com/v1']) {
       process.env.LLM_BASE_URL = baseUrl;
+      process.env.LLM_MODEL = baseUrl.includes('opencode.ai') ? 'deepseek-v4.1-flash' : 'gpt-4.1-mini';
       const response = { status(code) { assert.equal(code, 200); return this; }, json(body) { assert.equal(body.fallback, false); } };
       await aiHandler({
         method: 'POST',
