@@ -24,10 +24,10 @@ export const LANDING_DEMO = {
 
 /**
  * What happens when the first campaign is sent in the demo. These counts are a snapshot of the local
- * engine run (combine all 15 friends, recommend for the first preset, send, simulate replies);
+ * engine run (combine all 30 friends, recommend for the first preset, send, simulate replies);
  * tests/overview.test.mjs re-runs the engine and fails when they drift.
  */
-export const LANDING_OUTCOME = { sent: 9, accepted: 6, declined: 1, pending: 2 };
+export const LANDING_OUTCOME = { sent: 14, accepted: 9, declined: 2, pending: 3 };
 
 
 /** Scenarios offered by the closing call to action. The last one is meant to find nobody. */
