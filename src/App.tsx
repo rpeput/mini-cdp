@@ -1,5 +1,5 @@
 import { MotionConfig, motion } from 'motion/react';
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AnalyticsLoopTab } from './components/AnalyticsLoopTab.tsx';
 import { CampaignSegmentTab } from './components/CampaignSegmentTab.tsx';
 import { AiPerformanceTab } from './components/AiPerformanceTab.tsx';
@@ -20,7 +20,7 @@ import type { CampaignBrief, CampaignMatch, CampaignRecord, DataSourceType, RawS
 import { applyPastedReply, linkUnlinkedRecord, type PastedReply } from './utils/aiActions.ts';
 import { buildReplySummaries, createCampaign, recordSentInvitations } from './utils/campaignFlow.ts';
 import { buildStitchFx, type StitchFx } from './utils/motionSequence.ts';
-import { getEffectiveAttributeStatus } from './utils/cdpHelpers.ts';
+import { createId, getEffectiveAttributeStatus } from './utils/cdpHelpers.ts';
 import { applyReviewDecisions, undoReviewDecisions, type ReviewTarget } from './utils/reviewQueue.ts';
 import './App.css';
 
@@ -50,6 +50,19 @@ function loadDemo(): DemoData {
     // The demo remains usable if storage is blocked or its contents are invalid.
   }
   return initialDemo();
+}
+
+/** Jumps to the top without invoking smooth scrolling or `behavior: 'instant'`, which older mobile WebViews reject. */
+function scrollToTopInstant() {
+  const root = document.documentElement;
+  const previous = root.style.scrollBehavior;
+  root.style.scrollBehavior = 'auto';
+  // Force style resolution so `scroll-behavior: auto` takes effect before resetting scroll position.
+  root.getBoundingClientRect();
+  window.scrollTo(0, 0);
+  root.scrollTop = 0;
+  document.body.scrollTop = 0;
+  root.style.scrollBehavior = previous;
 }
 
 function WorkspacePage({ active, children }: { active: boolean; children: ReactNode }) {
@@ -103,13 +116,13 @@ export function App() {
     }
   }, [demo]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (isLoggedIn) {
       entered.current = true;
-      window.scrollTo({ top: 0, behavior: 'instant' });
+      scrollToTopInstant();
       mainRef.current?.focus({ preventScroll: true });
     } else if (entered.current) {
-      window.scrollTo({ top: 0, behavior: 'instant' });
+      scrollToTopInstant();
       document.getElementById('landing-main')?.focus({ preventScroll: true });
     }
   }, [isLoggedIn, activeTab]);
@@ -137,7 +150,7 @@ export function App() {
   }
 
   function notify(tone: ToastItem['tone'], title: string, detail?: string) {
-    setToasts((items) => [...items.slice(-2), { id: crypto.randomUUID(), tone, title, detail }]);
+    setToasts((items) => [...items.slice(-2), { id: createId(), tone, title, detail }]);
   }
 
   const dismissToast = useCallback((id: string) => {
@@ -170,7 +183,7 @@ export function App() {
     const profile = profiles.find((item) => item.id === profileId);
     if (busy || !profile || !text.trim() || text.length > 800) return;
     const record: RawSourceRecord = {
-      id: crypto.randomUUID(), source, rawText: text, linkedProfileId: profile.id,
+      id: createId(), source, rawText: text, linkedProfileId: profile.id,
       handle: profile.nickname, timestamp: new Date().toISOString(),
     };
     setDemo((current) => ({
@@ -257,7 +270,7 @@ export function App() {
 
   function launch(name: string, candidates: CampaignMatch[]) {
     if (busy) return;
-    const campaign = createCampaign(crypto.randomUUID(), name, new Date().toISOString(), candidates, profiles);
+    const campaign = createCampaign(createId(), name, new Date().toISOString(), candidates, profiles);
     if (!campaign) return;
     setDemo((current) => ({
       ...current,

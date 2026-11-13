@@ -161,7 +161,7 @@ export function CampaignSegmentTab({ profiles, records, confidenceThreshold, man
               {checkSource === 'model' ? 'ตรวจโดยโมเดล' : 'ตรวจด้วยโหมดพื้นฐาน'}: ผ่าน {checked.length - flagged} · มีข้อสังเกต {flagged}{flagged > 0 ? ' ดูใต้คำเชิญของแต่ละคน ส่งต่อได้หากเห็นว่าไม่เป็นปัญหา' : ''}
             </p>
           )}
-          <button className="button button-primary" disabled={busy || !selected.length || hasBlankInvite} onClick={() => onLaunchCampaign(campaignPrompt.trim(), matches)}>ส่งคำเชิญจำลอง <ArrowRight size={17} aria-hidden="true" /></button>
+          <button type="button" className="button button-primary" disabled={busy || !campaignPrompt.trim() || !selected.length || hasBlankInvite} onClick={() => onLaunchCampaign(campaignPrompt.trim(), matches)}>ส่งคำเชิญจำลอง <ArrowRight size={17} aria-hidden="true" /></button>
           <p className="summary-hint">{hasBlankInvite ? 'กรอกข้อความให้ครบสำหรับผู้รับที่เลือก' : 'หลังส่งแล้ว ดูสถานะของแต่ละคนได้ที่ผลแคมเปญ'}</p>
         </aside>
       </div>

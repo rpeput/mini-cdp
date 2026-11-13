@@ -10,7 +10,7 @@ import { explainRecommendation } from '../src/services/recommendationEvidence.ts
 import { matchesSearch, pageWindow, paginate, sortItems } from '../src/utils/tableQuery.ts';
 import { queryProfiles, querySources } from '../src/utils/listViews.ts';
 import { buildReplySummaries, createCampaign, recordSentInvitations, summarizeCampaign } from '../src/utils/campaignFlow.ts';
-import { getEffectiveAttributeStatus } from '../src/utils/cdpHelpers.ts';
+import { createId, getEffectiveAttributeStatus } from '../src/utils/cdpHelpers.ts';
 
 test('the landing story uses the seeded campaign evidence and local simulation outcome', async (context) => {
   context.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ fallback: true })));
@@ -310,4 +310,25 @@ test('friend list filters by status, interest and replies, and sorts by acceptan
   assert.ok(asc.slice(3).every((row) => row.acceptRate === null));
   const byTraits = q({ sortKey: 'interests', direction: 'desc' });
   assert.ok(byTraits[0].verifiedTraits.length >= byTraits.at(-1).verifiedTraits.length);
+});
+
+test('createId falls back cleanly when crypto.randomUUID is unavailable on non-HTTPS origins', () => {
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  assert.match(createId(), uuidPattern);
+
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  const getRandomValues = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
+  try {
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: { getRandomValues } });
+    const a = createId();
+    const b = createId();
+    assert.match(a, uuidPattern);
+    assert.match(b, uuidPattern);
+    assert.notEqual(a, b);
+
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: undefined });
+    assert.match(createId(), uuidPattern);
+  } finally {
+    if (original) Object.defineProperty(globalThis, 'crypto', original);
+  }
 });

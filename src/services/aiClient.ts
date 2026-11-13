@@ -1,4 +1,5 @@
 import { AI_UPSTREAM_TIMEOUT_MS, type AiAction, type AiProxyResponse } from '../types/cdp.ts';
+import { createId } from '../utils/cdpHelpers.ts';
 import { estimateTokens, markAiInvalid, type AiOutcome, recordAiCall } from './aiMetrics.ts';
 
 export const AI_PROXY_TIMEOUT_MS = AI_UPSTREAM_TIMEOUT_MS + 3_000;
@@ -53,16 +54,19 @@ export async function callAiRaw(action: AiAction, payload: unknown, timeoutMs = 
   const startedAt = performance.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const onModeAbort = () => controller.abort();
+  if (modeSignal.aborted) controller.abort();
+  else modeSignal.addEventListener('abort', onModeAbort, { once: true });
   try {
     const body = JSON.stringify({ action, payload });
     const response = await fetch('/api/ai', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-gather-ai-session': sessionId ??= crypto.randomUUID(),
+        'x-gather-ai-session': sessionId ??= createId(),
       },
       body,
-      signal: AbortSignal.any([controller.signal, modeSignal]),
+      signal: controller.signal,
     });
     const parsed = response.ok ? ((await response.json()) as AiProxyResponse) : null;
     if (modeSignal.aborted) return null;
@@ -88,6 +92,7 @@ export async function callAiRaw(action: AiAction, payload: unknown, timeoutMs = 
     return null;
   } finally {
     clearTimeout(timer);
+    modeSignal.removeEventListener('abort', onModeAbort);
   }
 }
 
