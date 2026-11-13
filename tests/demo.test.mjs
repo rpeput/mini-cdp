@@ -4,6 +4,8 @@ import { CAMPAIGN_PRESETS, INITIAL_PROFILES, RAW_SOURCE_RECORDS } from '../src/d
 import { LANDING_DEMO } from '../src/data/landingDemo.ts';
 import { runIdentityStitching, segmentCampaign, simulateCampaignResponses } from '../src/services/aiEngine.ts';
 import { explainRecommendation } from '../src/services/recommendationEvidence.ts';
+import { matchesSearch, pageWindow, paginate, sortItems } from '../src/utils/tableQuery.ts';
+import { queryProfiles, querySources } from '../src/utils/listViews.ts';
 import { buildReplySummaries, createCampaign, recordSentInvitations, summarizeCampaign } from '../src/utils/campaignFlow.ts';
 import { getEffectiveAttributeStatus } from '../src/utils/cdpHelpers.ts';
 
@@ -206,4 +208,103 @@ test('sending keeps the chosen, edited invitations and replies match what was se
   for (const profile of result.profiles.filter((item) => !sentIds.includes(item.id))) {
     assert.equal(profile.campaignHistory.some((item) => item.campaignId === 'c1'), false);
   }
+});
+
+test('pagination slices pages, clamps out-of-range pages and reports the range', () => {
+  const items = Array.from({ length: 45 }, (_, index) => index + 1);
+  const first = paginate(items, 1, 20);
+  assert.deepEqual([first.rows.length, first.from, first.to, first.pageCount], [20, 1, 20, 3]);
+  const last = paginate(items, 3, 20);
+  assert.deepEqual([last.rows, last.from, last.to], [[41, 42, 43, 44, 45], 41, 45]);
+  assert.equal(paginate(items, 99, 20).page, 3);
+  assert.equal(paginate(items, -4, 20).page, 1);
+  assert.equal(paginate(items, 1, 100).rows.length, 45);
+  const empty = paginate([], 5, 10);
+  assert.deepEqual([empty.rows, empty.page, empty.pageCount, empty.from, empty.to], [[], 1, 1, 0, 0]);
+  assert.deepEqual(pageWindow(1, 3), [1, 2, 3]);
+  assert.deepEqual(pageWindow(6, 12), [1, null, 5, 6, 7, null, 12]);
+  assert.deepEqual(pageWindow(3, 12), [1, 2, 3, 4, null, 12]);
+});
+
+test('sorting uses Thai collation, keeps ties stable and puts missing values last', () => {
+  const names = ['ปอนด์', 'กานต์', 'ฟ้าใส', 'บอส', 'เอก'];
+  assert.deepEqual(sortItems(names, (name) => name, 'asc'), ['กานต์', 'บอส', 'ปอนด์', 'ฟ้าใส', 'เอก']);
+  assert.deepEqual(sortItems(names, (name) => name, 'desc'), ['เอก', 'ฟ้าใส', 'ปอนด์', 'บอส', 'กานต์']);
+  const rows = [{ id: 'a', n: 2 }, { id: 'b', n: null }, { id: 'c', n: 1 }, { id: 'd', n: 2 }, { id: 'e', n: null }];
+  assert.deepEqual(sortItems(rows, (row) => row.n, 'asc').map((row) => row.id), ['c', 'a', 'd', 'b', 'e']);
+  assert.deepEqual(sortItems(rows, (row) => row.n, 'desc').map((row) => row.id), ['a', 'd', 'c', 'b', 'e']);
+  assert.deepEqual(sortItems(['10', '9', '100'], (value) => value, 'asc'), ['9', '10', '100']);
+});
+
+test('search needs every term and ignores case and spacing', () => {
+  assert.equal(matchesSearch(['ชวนกินหมูกระทะ', 'Boss_99'], 'หมูกระทะ boss'), true);
+  assert.equal(matchesSearch(['ชวนกินหมูกระทะ', 'Boss_99'], 'หมูกระทะ เดินป่า'), false);
+  assert.equal(matchesSearch(['abc'], '   '), true);
+});
+
+test('source records filter, search and sort by time, friend and status', () => {
+  const base = { query: '', source: 'all', status: 'all', sortKey: 'time', direction: 'desc' };
+  const all = querySources(RAW_SOURCE_RECORDS, INITIAL_PROFILES, base);
+  assert.equal(all.length, RAW_SOURCE_RECORDS.length);
+  const times = all.map((row) => Date.parse(row.record.timestamp));
+  assert.deepEqual(times, [...times].sort((a, b) => b - a));
+
+  for (const source of ['LINE_CHAT', 'FACEBOOK_POST', 'DEPT_ROSTER']) {
+    const rows = querySources(RAW_SOURCE_RECORDS, INITIAL_PROFILES, { ...base, source });
+    assert.ok(rows.length > 0 && rows.every((row) => row.record.source === source));
+  }
+  const pending = querySources(RAW_SOURCE_RECORDS, INITIAL_PROFILES, { ...base, status: 'pending' });
+  const processed = querySources(RAW_SOURCE_RECORDS, INITIAL_PROFILES, { ...base, status: 'processed' });
+  assert.equal(pending.length + processed.length, all.length);
+  assert.ok(pending.every((row) => !row.profile.isStitched) && processed.every((row) => row.profile.isStitched));
+
+  const boss = INITIAL_PROFILES.find((item) => item.nickname === 'บอส');
+  const byName = querySources(RAW_SOURCE_RECORDS, INITIAL_PROFILES, { ...base, query: boss.nickname });
+  assert.ok(byName.length > 0 && byName.every((row) => row.record.linkedProfileId === boss.id || row.record.rawText.includes(boss.nickname) || row.record.handle.includes(boss.nickname)));
+  const byText = querySources(RAW_SOURCE_RECORDS, INITIAL_PROFILES, { ...base, query: 'หมูกระทะ' });
+  assert.ok(byText.length > 0 && byText.every((row) => row.record.rawText.includes('หมูกระทะ') || row.profile?.nickname.includes('หมูกระทะ')));
+
+  const byStatus = querySources(RAW_SOURCE_RECORDS, INITIAL_PROFILES, { ...base, sortKey: 'status', direction: 'asc' });
+  assert.equal(byStatus[0].status, 'pending');
+  const byFriend = querySources(RAW_SOURCE_RECORDS, INITIAL_PROFILES, { ...base, sortKey: 'friend', direction: 'asc' });
+  const names = byFriend.map((row) => row.profile.nickname);
+  assert.deepEqual(names, [...names].sort((a, b) => a.localeCompare(b, 'th', { numeric: true, sensitivity: 'base' })));
+  assert.equal(querySources(RAW_SOURCE_RECORDS, INITIAL_PROFILES, { ...base, query: 'ไม่มีข้อความนี้แน่นอน' }).length, 0);
+});
+
+test('friend list filters by status, interest and replies, and sorts by acceptance', () => {
+  const base = { query: '', status: 'all', interest: 'all', reply: 'all', sortKey: 'name', direction: 'asc' };
+  const run = (extra) => queryProfiles(INITIAL_PROFILES, 75, new Set(), { ...base, ...extra });
+  assert.equal(run({}).length, INITIAL_PROFILES.length);
+  const ready = run({ status: 'ready' });
+  assert.ok(ready.length > 0 && ready.every((row) => row.profile.isStitched && row.profile.consentPdpa));
+  assert.ok(run({ status: 'pending' }).every((row) => !row.profile.isStitched));
+  assert.ok(run({ status: 'no-consent' }).every((row) => !row.profile.consentPdpa));
+
+  const food = run({ interest: 'food' });
+  assert.ok(food.length > 0 && food.every((row) => row.verifiedTraits.some((trait) => trait.category === 'food')));
+  const bySearch = run({ query: 'หมูกระทะ' });
+  assert.ok(bySearch.length > 0);
+
+  const history = (status) => [{ campaignId: 'x', campaignName: 'x', status, sentMessage: 'x', timestamp: '2026-01-01T00:00:00Z' }];
+  const [a, b, c, d, ...rest] = INITIAL_PROFILES;
+  const profiles = [
+    { ...a, campaignHistory: [...history('accepted'), ...history('accepted')] },
+    { ...b, campaignHistory: [...history('accepted'), ...history('declined')] },
+    { ...c, campaignHistory: history('declined') },
+    { ...d, campaignHistory: [] },
+    ...rest.map((item) => ({ ...item, campaignHistory: [] })),
+  ];
+  const q = (extra) => queryProfiles(profiles, 75, new Set(), { ...base, ...extra });
+  assert.deepEqual(new Set(q({ reply: 'accepted' }).map((row) => row.profile.id)), new Set([a.id, b.id]));
+  assert.deepEqual(new Set(q({ reply: 'declined' }).map((row) => row.profile.id)), new Set([b.id, c.id]));
+  assert.equal(q({ reply: 'never' }).length, profiles.length - 3);
+  const byRate = q({ sortKey: 'acceptance', direction: 'desc' });
+  assert.deepEqual(byRate.slice(0, 3).map((row) => row.acceptRate), [1, 0.5, 0]);
+  assert.ok(byRate.slice(3).every((row) => row.acceptRate === null));
+  const asc = q({ sortKey: 'acceptance', direction: 'asc' });
+  assert.deepEqual(asc.slice(0, 3).map((row) => row.acceptRate), [0, 0.5, 1]);
+  assert.ok(asc.slice(3).every((row) => row.acceptRate === null));
+  const byTraits = q({ sortKey: 'interests', direction: 'desc' });
+  assert.ok(byTraits[0].verifiedTraits.length >= byTraits.at(-1).verifiedTraits.length);
 });

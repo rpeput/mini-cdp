@@ -1,7 +1,11 @@
-import { ArrowRight, Database, FileText, MessageSquare, Plus, ScanLine, Share2 } from 'lucide-react';
+import { ArrowRight, Database, FileText, MessageSquare, Plus, ScanLine, Search, Share2 } from 'lucide-react';
 import { useState } from 'react';
 import type { DataSourceType, RawSourceRecord, UnifiedProfile } from '../types/cdp.ts';
-import { SOURCE_META } from '../utils/cdpHelpers.ts';
+import { useTableState } from '../hooks/useTableState.ts';
+import { formatDateShort, SOURCE_META } from '../utils/cdpHelpers.ts';
+import { querySources, SOURCE_SORT_KEYS, type SourceQuery } from '../utils/listViews.ts';
+import { paginate } from '../utils/tableQuery.ts';
+import { ClearFiltersButton, Highlight, SearchBox, type SortOption, SortControl, TablePagination } from './TableControls.tsx';
 
 interface CollectUnifyTabProps {
   profiles: UnifiedProfile[];
@@ -16,6 +20,15 @@ interface CollectUnifyTabProps {
   onGoToCampaign: () => void;
 }
 
+const sortOptions: readonly SortOption[] = [
+  { key: 'time', label: 'เวลา', asc: 'เก่า → ใหม่', desc: 'ใหม่ → เก่า' },
+  { key: 'friend', label: 'เพื่อน', asc: 'ก → ฮ', desc: 'ฮ → ก' },
+  { key: 'source', label: 'แหล่งข้อมูล', asc: 'A → Z', desc: 'Z → A' },
+  { key: 'status', label: 'สถานะ', asc: 'รอก่อน', desc: 'เสร็จก่อน' },
+];
+const recordFilters = { source: 'all', status: 'all' };
+const statusLabels = { pending: 'รอประมวลผล', processed: 'ประมวลผลแล้ว' };
+
 const sources = [
   { id: 'LINE_CHAT', icon: MessageSquare },
   { id: 'FACEBOOK_POST', icon: Share2 },
@@ -23,12 +36,20 @@ const sources = [
 ] as const;
 
 export function CollectUnifyTab({ profiles, records, busy, isStitching, confidenceThreshold, onThresholdChange, onRunStitching, onAddSignal, onInspectProfile, onGoToCampaign }: CollectUnifyTabProps) {
-  const [filter, setFilter] = useState<DataSourceType | 'all'>('all');
+  const table = useTableState({ storageKey: 'gather-table-sources', filters: recordFilters, sortKey: 'time', direction: 'desc', sortKeys: SOURCE_SORT_KEYS });
+  const { state } = table;
   const [profileId, setProfileId] = useState(profiles[0]?.id ?? '');
   const [source, setSource] = useState<DataSourceType>('LINE_CHAT');
   const [text, setText] = useState('');
   const pending = profiles.filter((profile) => !profile.isStitched);
-  const visible = records.filter((record) => filter === 'all' || record.source === filter);
+  const matched = querySources(records, profiles, {
+    query: state.query,
+    source: state.filters.source as SourceQuery['source'],
+    status: state.filters.status as SourceQuery['status'],
+    sortKey: state.sortKey,
+    direction: state.direction,
+  });
+  const view = paginate(matched, state.page, state.pageSize);
 
   return (
     <section aria-labelledby="sources-title">
@@ -54,7 +75,9 @@ export function CollectUnifyTab({ profiles, records, busy, isStitching, confiden
             event.preventDefault();
             if (!text.trim() || busy) return;
             onAddSignal(profileId, source, text.trim());
-            setFilter('all');
+            table.clearFilters();
+            table.setSortKey('time');
+            table.setDirection('desc');
             setText('');
           }}>
             <h2>เพิ่มข้อความทดลอง</h2>
@@ -76,24 +99,40 @@ export function CollectUnifyTab({ profiles, records, busy, isStitching, confiden
         </div>
         <div className="surface">
           <div className="table-toolbar">
-            <div><h2>ข้อมูลต้นทาง</h2><p aria-live="polite">{visible.length} รายการ</p></div>
-            <label><span className="sr-only">กรองแหล่งข้อมูล</span><select value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)}>
+            <div><h2>ข้อมูลต้นทาง</h2><p aria-live="polite">{matched.length === records.length ? `${records.length} รายการ` : `พบ ${matched.length} จาก ${records.length} รายการ`}</p></div>
+          </div>
+          <div className="list-controls">
+            <SearchBox label="ค้นหาข้อมูลต้นทาง" placeholder="ข้อความ ชื่อ หรือรหัสนักศึกษา…" value={state.query} onChange={table.setQuery} />
+            <label><span className="sr-only">กรองแหล่งข้อมูล</span><select value={state.filters.source} onChange={(event) => table.setFilter('source', event.target.value)}>
               <option value="all">ทุกแหล่งข้อมูล</option>
               {sources.map(({ id }) => <option key={id} value={id}>{SOURCE_META[id].label}</option>)}
             </select></label>
+            <label><span className="sr-only">กรองตามสถานะประมวลผล</span><select value={state.filters.status} onChange={(event) => table.setFilter('status', event.target.value)}>
+              <option value="all">ทุกสถานะ</option>
+              <option value="pending">{statusLabels.pending}</option>
+              <option value="processed">{statusLabels.processed}</option>
+            </select></label>
+            <SortControl options={sortOptions} sortKey={state.sortKey} direction={state.direction} onSortKeyChange={table.setSortKey} onDirectionChange={table.setDirection} />
+            {table.hasActiveFilters && <ClearFiltersButton onClear={table.clearFilters} />}
           </div>
-          <ul className="source-list" aria-label="รายการข้อมูลต้นทาง">
-            {[...visible].reverse().map((record) => {
-              const profile = profiles.find((item) => item.id === record.linkedProfileId);
-              return (
+          {view.rows.length ? (
+            <ul className="source-list" aria-label="รายการข้อมูลต้นทาง">
+              {view.rows.map(({ record, profile, status }) => (
                 <li key={record.id}>
-                  <div className="source-row-top"><span className="chip" lang="en">{SOURCE_META[record.source].shortLabel}</span>{profile && <button className="text-button" onClick={() => onInspectProfile(profile.id)}>ดูโปรไฟล์ {profile.nickname} <ArrowRight size={14} aria-hidden="true" /></button>}</div>
-                  <p>{record.rawText}</p>
-                  <small className="muted">{record.handle}</small>
+                  <div className="source-row-top">
+                    <span className="chip-list"><span className="chip" lang="en">{SOURCE_META[record.source].shortLabel}</span><span className={`chip ${status === 'pending' ? 'chip-waiting' : 'chip-positive'}`}>{statusLabels[status]}</span></span>
+                    {profile && <button className="text-button" onClick={() => onInspectProfile(profile.id)}>ดูโปรไฟล์ {profile.nickname} <ArrowRight size={14} aria-hidden="true" /></button>}
+                  </div>
+                  <p><Highlight text={record.rawText} query={state.query} /></p>
+                  <small className="muted">{record.handle} · {formatDateShort(record.timestamp)}</small>
                 </li>
-              );
-            })}
-          </ul>
+              ))}
+            </ul>
+          ) : (
+            <div className="empty"><Search aria-hidden="true" /><h3>ไม่พบข้อมูลที่ตรงกับตัวกรอง</h3><p>ลองเปลี่ยนคำค้นหาหรือล้างตัวกรอง</p><button className="button button-light" onClick={table.clearFilters}>ล้างตัวกรอง</button></div>
+          )}
+          <TablePagination total={view.total} page={view.page} pageSize={view.pageSize} from={view.from} to={view.to} label="ข้อมูลต้นทาง"
+            onPageChange={table.setPage} onPageSizeChange={table.setPageSize} />
         </div>
       </div>
     </section>

@@ -222,8 +222,9 @@ export function App() {
           <TopNavbar activeTab={activeTab} onTabChange={setActiveTab} onToggleXRay={() => setIsXRayOpen(true)}
             onResetDemo={resetDemo} onReturnToLanding={() => setIsLoggedIn(false)} busy={busy} />
           <main id="main-content" ref={mainRef} tabIndex={-1} className="workspace-main">
+            <div className="workspace-content">
             <DemoAccountBanner activeTab={activeTab} friendCount={profiles.length} onTabChange={setActiveTab} />
-            <motion.div key={activeTab} className="workspace-content" initial={{ y: 5 }} animate={{ y: 0 }} transition={{ duration: 0.18 }}>
+            <motion.div key={activeTab} initial={{ y: 5 }} animate={{ y: 0 }} transition={{ duration: 0.18 }}>
               {activeTab === 'profiles' && <UnifiedProfilesTab profiles={profiles} confidenceThreshold={threshold} manuallyApprovedIds={manuallyApprovedIds}
                 onSelectProfile={setInspectedProfileId} onGoToSources={goToSources} onGoToCampaign={goToCampaign} />}
               {activeTab === 'collect' && <CollectUnifyTab profiles={profiles} records={records} busy={busy} isStitching={operation === 'stitch'} confidenceThreshold={threshold}
@@ -240,6 +241,7 @@ export function App() {
                 isSimulating={operation === 'simulate'} onSelectCampaign={setActiveCampaignId} onSimulateReplies={simulate}
                 onGoToSegmentation={goToCampaign} onInspectProfile={setInspectedProfileId} />}
             </motion.div>
+            </div>
           </main>
           <ProfileInspectorDrawer profile={inspectedProfile} records={records} onClose={() => setInspectedProfileId(null)}
             confidenceThreshold={threshold} manuallyApprovedIds={manuallyApprovedIds} onAttributeDecision={decideAttribute} busy={busy} />
