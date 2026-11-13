@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'motion/react';
 import { AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -66,7 +66,7 @@ export function ToastRegion({
     return (
       <div
         role="region"
-        aria-label="Notifications"
+        aria-label="การแจ้งเตือน"
         aria-live="polite"
         className="sr-only"
       />
@@ -76,13 +76,13 @@ export function ToastRegion({
   return (
     <div
       role="region"
-      aria-label="Notifications"
+      aria-label="การแจ้งเตือน"
       aria-live="polite"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
-      className="pointer-events-none fixed bottom-4 left-4 z-50 flex w-full max-w-sm flex-col gap-2"
+      className="pointer-events-none fixed inset-x-4 bottom-4 z-50 flex max-w-sm flex-col gap-2"
     >
       <AnimatePresence initial={false}>
         {toasts.map((toast) => (
@@ -110,8 +110,8 @@ export function ToastRegion({
             <button
               type="button"
               onClick={() => onDismiss(toast.id)}
-              aria-label={`Dismiss notification: ${toast.title}`}
-              className="inline-flex min-h-6 min-w-6 items-center justify-center rounded-md text-ink-secondary transition-colors hover:bg-zinc-100 hover:text-ink-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50"
+              aria-label={`ปิดการแจ้งเตือน ${toast.title}`}
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-ink-secondary transition-colors hover:bg-zinc-100 hover:text-ink-primary"
             >
               <X className="h-3.5 w-3.5" aria-hidden="true" />
             </button>

@@ -1,131 +1,38 @@
-# Mini CDP — AI-Powered Customer Data Platform
+# Gather · Mini CDP
 
-**Mini CDP** is a self-serve AI Customer Data Platform built around four operational pillars: **Collect → Unify → Activate → Govern**. It resolves fragmented Thai and English customer signals across `LINE_CHAT`, `FACEBOOK_POST`, and `DEPT_ROSTER` into verified Single Customer Views, runs 2-tier semantic segmentation, and closes the loop by syncing live campaign responses back into customer profiles.
+เดโมภาษาไทยสำหรับชวนเพื่อนในภาควิชาไปทำกิจกรรม มีเพื่อนสมมติ 15 คน และข้อมูลตัวอย่าง 45 รายการจากแชท โพสต์ และรายชื่อ
 
-## System Architecture
+## เปิดเดโม
 
-```mermaid
-flowchart LR
-  subgraph Collect["1. Collect (Multi-Source Ingestion)"]
-    LINE["LINE_CHAT (Raw Handles & Slang)"]
-    FB["FACEBOOK_POST (Lifestyle Signals)"]
-    ROSTER["DEPT_ROSTER (Identity Anchor)"]
-  end
-
-  subgraph HybridAI["2. Unify & Activate (Hybrid AI Engine)"]
-    PROXY["Vercel Serverless Proxy (POST /api/ai)"]
-    LLM["MaxPlus AI OpenAI Gateway (gpt-6-luna, JSON Mode)"]
-    LOCAL["Deterministic Local Semantic Fallback"]
-  end
-
-  subgraph Govern["3. Govern (Human-in-the-Loop)"]
-    QUOTES["Verbatim Evidence Quotes"]
-    SLIDER["Confidence Threshold Slider (50% - 95%)"]
-    PDPA["PDPA Consent Gate & Approve/Reject"]
-  end
-
-  subgraph Loop["4. Campaign & Closed-Loop Sync"]
-    SEG["2-Tier Segmentation (Direct 82-98% / Lookalike 65-81%)"]
-    SIM["Thai Chat Reply Simulation"]
-    SYNC["Closed-Loop Profile Attribute Sync"]
-  end
-
-  LINE --> PROXY
-  FB --> PROXY
-  ROSTER --> PROXY
-  PROXY -->|"LLM_API_KEY present"| LLM
-  PROXY -->|"Missing key / fallback: true / offline"| LOCAL
-  LLM --> QUOTES
-  LOCAL --> QUOTES
-  QUOTES --> SLIDER --> PDPA --> SEG --> SIM --> SYNC
-  SYNC -->|"Writes behavioral attributes"| Govern
-```
-
-## Core Workflow Tabs
-
-1. **Collect & Unify (`CollectUnifyTab`):** Inspect unmerged multi-source records, run the 3-stage AI Identity Stitching pipeline (`Entity Resolution → Attribute Extraction → Confidence Governance`), test reversible `Unmerge / Re-merge` resolution, and triage low-confidence traits.
-2. **Unified Profiles (`UnifiedProfilesTab` + `ProfileInspectorDrawer`):** Browse 15 Computing department profiles, filter by Thai lifestyle tags or `Needs Review`, inspect verbatim source quotes, approve or reject traits, and toggle `Formatted / Raw JSON`.
-3. **AI Segmentation (`CampaignSegmentTab`):** Choose Thai campaign presets or enter any custom prompt to discover **Tier 1: Direct Match** (`82–98%`) and **Tier 2: Lookalike / Vibe Match** (`65–81%`) targets, customize LINE invites in the Message Studio, and launch campaigns while shielding `PDPA Opt-Out` records.
-4. **Campaign & Loop (`AnalyticsLoopTab`):** Track `Total Sent`, `Accepted Rate`, `Lookalike Conversion`, and `Closed-Loop Profile Updates`, simulate Thai chat replies, and verify new behavioral attributes written directly back onto `UnifiedProfile` records.
-5. **AI Lead X-Ray Mode (`XRayDrawer`):** Inspect the 4-pillar architecture, `src/types/cdp.ts` TypeScript schema, live sample JSON, and real-time `PipelineLog[]` execution latencies.
-
-## Key Engineering Highlights
-
-- **Hallucination Mitigation & Grounding:**
-  - All LLM requests enforce JSON output mode (`response_format: { type: "json_object" }` on `/v1/chat/completions`, or `text: { format: { type: "json_object" } }` on `/v1/responses`) and strict schema validation against `src/types/cdp.ts`.
-  - Every `ExtractedAttribute` carries a verbatim `evidenceQuote` substring traced directly to its source record (`LINE_CHAT`, `FACEBOOK_POST`, or `DEPT_ROSTER`).
-  - A global **Confidence Threshold Slider** (`50%–95%`, default `75%`) dynamically flags attributes below the gate as `Needs Review` for explicit human **Approve / Reject** governance.
-- **Zero-Downtime Hybrid AI Resilience:**
-  - Browser code never holds or sends API credentials. Every AI call goes through `POST /api/ai` (`api/ai.ts`) with an 18-second client timeout (`src/services/aiEngine.ts`) tailored for multi-profile `gpt-6-luna` inference via gateway proxies.
-  - `api/ai.ts` targets `https://api.maxplus-ai.cc/auto-pools/v1/chat/completions` by default and automatically adapts to `/v1/responses` when an upstream pool/model requires the OpenAI Responses API.
-  - When `LLM_API_KEY` (`OPENAI_API_KEY`) is unset or the upstream endpoint is unreachable (including standard local `vite` dev), `/api/ai` returns `{ fallback: true }` with HTTP `200`, seamlessly activating the deterministic local Thai/English semantic engine with identical output contracts.
-- **Strict Enterprise UI & Accessibility:**
-  - Built with React 19, TypeScript (`strict: true`), Tailwind CSS v4 (`@theme` tokens in `src/index.css`), Framer Motion (`MotionConfig reducedMotion="user"`), and Lucide icons.
-  - Native modal `<dialog>` drawers with `overscroll-behavior: contain`, `tabular-nums` on all scores/latencies/KPIs, and visible `focus-visible` rings across all controls.
-
-## Project Structure
-
-```text
-api/
-  ai.ts                           # Vercel Serverless MaxPlus AI / OpenAI-compatible proxy + { fallback: true }
-src/
-  components/
-    AnalyticsLoopTab.tsx          # Tab 4: KPIs, reply simulation & closed-loop sync
-    CampaignSegmentTab.tsx        # Tab 3: Preset/custom segmentation & Message Studio
-    CollectUnifyTab.tsx           # Tab 1: Ingestion queue, identity stitching & unmerge/re-merge
-    DrawerShell.tsx               # Native modal <dialog> + Framer Motion slide-over wrapper
-    LoginGate.tsx                 # 1-click demo workspace & X-Ray entry
-    ProfileInspectorDrawer.tsx    # Profile evidence quotes, governance & Raw JSON inspector
-    ToastRegion.tsx               # Accessible polite live-region notifications
-    TopNavbar.tsx                 # Sticky navbar, workflow tabs, threshold slider & X-Ray switch
-    UnifiedProfilesTab.tsx        # Tab 2: Searchable 15-profile grid & quick filters
-    XRayDrawer.tsx                # Architecture, TypeScript schema & live AI pipeline logs
-  data/
-    seedData.ts                   # 15 Computing Dept profiles, 45 raw records & CAMPAIGN_PRESETS
-  services/
-    aiEngine.ts                   # Hybrid AI client + deterministic Thai semantic fallback engine
-  types/
-    cdp.ts                        # Strict CDP TypeScript contracts
-  utils/
-    cdpHelpers.ts                 # Shared styling tokens, effective governance status & formatters
-  App.tsx                         # Root state orchestration
-  index.css                       # Tailwind v4 @theme design system & accessible slider/dialog CSS
-vercel.json                       # /api/* serverless routing & SPA /index.html fallback
-```
-
-## Quick Start & Environment Setup
-
-### 1. Install dependencies
-
-```bash
+```sh
 npm install
-```
-
-### 2. Run locally (Deterministic Local AI Mode)
-
-```bash
 npm run dev
 ```
 
-No API key is required for local development — all three AI workflows (`stitch`, `segment`, `simulate_replies`) seamlessly use the deterministic local semantic engine when `/api/ai` is unavailable or `LLM_API_KEY` is unset.
+ยังไม่มี URL ที่เผยแพร่และตรวจแล้ว ผู้ตรวจรันในเครื่องด้วยคำสั่งข้างต้นแล้วเปิด `http://localhost:5173` ในเบราว์เซอร์ใหม่ หากส่งงานเป็นลิงก์ Vercel ให้ตรวจเส้นทางด้านล่างกับลิงก์นั้นก่อนส่ง
 
-### 3. Optional: Enable Live `gpt-6-luna` (MaxPlus AI / OpenAI-Compatible) via Vercel
+ทางเข้าเป็น **บัญชีเดโม** ไม่ต้องสมัครหรือกรอกรหัสผ่าน ชื่อเพื่อน ข้อความ และคำตอบทั้งหมดเป็นข้อมูลสมมติ ไม่มีการส่งหาใครจริง แถบ “เข้าด้วยบัญชีเดโม” ในพื้นที่ทำงานบอกเรื่องนี้ทุกหน้า และมีปุ่มไปที่ **ดูรายชื่อเพื่อน** กับ **เริ่มสร้างแคมเปญ**
 
-Add `LLM_API_KEY` as a server-side environment variable in Vercel Project Settings (or `.env.local` when running `vercel dev`):
+1. กด **ทดลองใช้เดโม** ที่หน้าแรก ระบบเปิดหน้า **สร้างแคมเปญ** พร้อมกิจกรรมหมูกระทะ กด **ดูรายชื่อเพื่อน** เพื่อเปิดโปรไฟล์และหลักฐานของเพื่อน 15 คน
+2. ไปที่ **แหล่งข้อมูล** เพิ่มข้อความสมมติหรือใช้ข้อมูลที่เตรียมไว้ แล้วกด **รวมและสกัดข้อมูล** (ข้ามได้ มีเพื่อน 5 คนที่รวมข้อมูลแล้วตั้งแต่เริ่ม)
+3. ไปที่ **สร้างแคมเปญ** เลือกหมูกระทะ เดินป่า เที่ยวทะเล หรือแฮงเอาท์ หรือพิมพ์กิจกรรมของคุณ กด **แนะนำผู้รับคำเชิญ** แต่ละแถวบอกว่า **ตรงความสนใจ** หรือ **ความสนใจใกล้เคียง**
+4. กด **ทำไมแนะนำคนนี้** ที่แถวผู้รับ เพื่อดูข้อความที่เพื่อนเคยพูด คำที่ตรงกับกิจกรรม แหล่งที่มา ความมั่นใจ และสถานะการตรวจ กด **ดูข้อความต้นทางทั้งหมด** เพื่อเห็นข้อความเต็ม และ **เปิดโปรไฟล์** เพื่อตรวจต่อ หากพิมพ์กิจกรรมที่ไม่มีใครเข้ากับข้อมูล ระบบแสดง “ไม่พบผู้รับ”
+5. เลือกหรือยกเลิกผู้รับ แก้คำเชิญ แล้วกด **ส่งคำเชิญจำลอง** จากนั้นกด **จำลองคำตอบ** ยอดส่ง ตอบรับ ปฏิเสธ และยังไม่ตอบรวมกันเท่าจำนวนที่ส่ง เปิดโปรไฟล์จากรายชื่อผลเพื่อดูข้อความที่ส่งและคำตอบที่บันทึกกลับ
 
-```bash
-LLM_API_KEY=your_maxplus_or_openai_api_key_here
-# Optional overrides (defaults shown below):
-LLM_BASE_URL=https://api.maxplus-ai.cc/auto-pools/v1
-LLM_MODEL=gpt-6-luna
-# auto (tries /chat/completions, falls back to /responses on 400/404/405/422) | chat | responses
-LLM_WIRE_API=auto
-```
+เมนู **บันทึกระบบ** แสดงขั้นตอนและผลการประมวลผล ข้อมูลเดโมเก็บใน session storage ของแท็บเบราว์เซอร์ กด **เริ่มเดโมใหม่** เพื่อกลับสู่ชุดตัวอย่าง
 
-### 4. Typecheck, Lint, and Production Build
+## การประมวลผล
 
-```bash
-npx tsc -b --noEmit
-npm run lint
+ข้อมูลตัวอย่างระบุรหัสโปรไฟล์ไว้ล่วงหน้า ข้อความใหม่จับคู่กับเพื่อนที่ผู้ใช้เลือก ระบบเก็บข้อความอ้างอิง ค่าความมั่นใจ และสถานะตรวจสอบของแต่ละความสนใจ การแนะนำใช้โปรไฟล์ที่รวมข้อมูลแล้วและยินยอมรับคำเชิญ การส่งและคำตอบทั้งหมดจำลองในแอป
+
+ผลของโมเดลต้องตรง schema จึงถูกนำไปใช้: `matches: []` ที่ถูกรูปแบบแปลว่าไม่พบผู้รับและแสดงเป็นผลว่าง ส่วนคำตอบที่ล้มเหลว ผิดรูปแบบ หรืออ้างเพื่อนนอกกลุ่มที่ยินยอมจะใช้กฎในเครื่องแทน และหน้าแคมเปญบอกว่า “ค้นหาด้วยโมเดล” หรือ “ค้นหาด้วยกฎในเครื่อง” เหตุผลของโมเดลถูกตรวจกับข้อมูลในโปรไฟล์ทุกครั้ง หากไม่พบหลักฐานที่ตรง หน้า “ทำไมแนะนำคนนี้” จะบอกไว้
+
+Vite ใช้กฎสกัดข้อความและจับคู่ความสนใจในเครื่องเมื่อ `/api/ai` ใช้งานไม่ได้ หากต้องการทดลอง AI ผ่าน `vercel dev` หรือ Vercel ให้ตั้ง `LLM_API_KEY` และตั้ง `LLM_BASE_URL` กับ `LLM_MODEL` ให้ตรงกับผู้ให้บริการ รองรับ `LLM_WIRE_API=auto|chat|responses` ใช้ข้อมูลสมมติเมื่อทดลองกับผู้ให้บริการภายนอก
+
+## ตรวจสอบ
+
+```sh
 npm run build
+npm run lint
+node --test tests/demo.test.mjs
 ```

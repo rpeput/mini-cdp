@@ -66,15 +66,15 @@ Sort matches by matchScore descending.`,
   simulate_replies: `You are the customer response simulator for Mini CDP campaign launches and closed-loop feedback.
 Given campaignName, target CampaignMatch entries, and each friend's UnifiedProfile (attributes, budget constraints, and past interactions):
 Rules:
-1. Generate realistic Thai/bilingual LINE chat replies reflecting each friend's actual preferences, budget constraints, and workload. Roughly 75% accepted and 25% declined.
+1. Generate realistic Thai/bilingual LINE chat replies reflecting each friend's preferences, budget constraints, and workload. For five or more recipients include accepted, declined, and pending outcomes. Pending recipients have not replied yet.
 2. Do NOT include emojis in replyText.
-3. For each target, return a new closed-loop behavioral ExtractedAttribute (e.g. "ตอบรับแคมเปญไว" for accepted, or "ปลายเดือนช็อต" / "ติดปั่นโปรเจกต์ช่วงนี้" for declined) with exact evidenceQuote equal to replyText.
+3. For accepted and declined recipients return a behavioral ExtractedAttribute with exact evidenceQuote equal to replyText. For pending recipients return an empty replyText and omit feedbackAttribute.
 4. Return valid JSON matching:
    {
      "replies": [
        {
          "profileId": string,
-         "status": "accepted" | "declined",
+         "status": "accepted" | "declined" | "pending",
          "replyText": string,
          "feedbackAttribute": {
            "category": "food" | "activity" | "vibe" | "budget",

@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'motion/react';
 import { X } from 'lucide-react';
 import { type ReactNode, useEffect, useId, useRef } from 'react';
 
@@ -41,10 +41,14 @@ function ActiveDialog({
     if (!dialog || dialog.open) {
       return;
     }
+    const trigger = document.activeElement;
     dialog.showModal();
     return () => {
       if (dialog.open) {
         dialog.close();
+      }
+      if (trigger instanceof HTMLElement && trigger.isConnected) {
+        trigger.focus({ preventScroll: true });
       }
     };
   }, []);
@@ -111,7 +115,7 @@ function ActiveDialog({
               <div className="flex flex-wrap items-center gap-2">
                 <h2
                   id={headingId}
-                  className="text-base font-semibold tracking-tight text-ink-primary"
+                  className="text-lg font-semibold tracking-tight text-ink-primary"
                 >
                   {title}
                 </h2>
@@ -129,14 +133,14 @@ function ActiveDialog({
               autoFocus
               whileTap={{ scale: 0.985 }}
               onClick={onClose}
-              aria-label={`Close ${title}`}
-              className="inline-flex min-h-8 min-w-8 shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-surface text-ink-secondary transition-colors hover:bg-zinc-100 hover:text-ink-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50"
+              aria-label="ปิดรายละเอียด"
+              className="button button-light drawer-close"
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </motion.button>
           </header>
 
-          <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+          <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">{children}</div>
         </motion.div>
       </div>
     </dialog>

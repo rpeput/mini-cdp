@@ -94,7 +94,7 @@ export interface CampaignReplySummary {
   replyText: string;
   tier: CampaignMatchTier;
   feedbackTag: string;
-  feedbackCategory: AttributeCategory;
+  feedbackCategory?: AttributeCategory;
 }
 
 export interface CampaignRecord {

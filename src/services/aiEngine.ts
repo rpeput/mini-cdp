@@ -29,12 +29,14 @@ export interface SegmentationResult {
   matches: CampaignMatch[];
   logs: PipelineLog[];
   usedFallback: boolean;
+  /** 'model' when a well-formed model answer was used (even if it found nobody), 'local' for the rule engine. */
+  source: 'model' | 'local';
 }
 
 export interface SimulatedReplyEntry {
   profileId: string;
   interaction: CampaignInteraction;
-  feedbackAttribute: ExtractedAttribute;
+  feedbackAttribute?: ExtractedAttribute;
 }
 
 export interface SimulationResult {
@@ -93,7 +95,7 @@ interface ExtractionRule {
   quoteMatcher: RegExp;
 }
 
-interface SemanticCluster {
+export interface SemanticCluster {
   id: string;
   label: string;
   promptKeywords: string[];
@@ -215,7 +217,7 @@ const EXTRACTION_RULES: ExtractionRule[] = [
   },
 ];
 
-const SEMANTIC_CLUSTERS: SemanticCluster[] = [
+export const SEMANTIC_CLUSTERS: SemanticCluster[] = [
   {
     id: 'mookata_grill',
     label: 'สายหมูกระทะและปิ้งย่าง',
@@ -466,25 +468,13 @@ function extractLocalAttributesForProfile(
     }
   }
 
-  // Ensure every stitched profile always receives at least 2 grounded attributes
-  if (extracted.length === 0 && records.length > 0) {
-    const primaryRecord = records[0];
-    extracted.push({
-      id: `attr_${profileId}_general`,
-      category: 'vibe',
-      value: 'นิสิตภาควิชาคอมฯ',
-      confidence: 70,
-      evidenceQuote: primaryRecord.rawText,
-      source: primaryRecord.source,
-      status: 'needs_review',
-    });
-  }
 
   return extracted;
 }
 
 export async function runIdentityStitching(
   profiles: UnifiedProfile[],
+  records = RAW_SOURCE_RECORDS,
 ): Promise<StitchingResult> {
   const startedAt = performance.now();
   const unstitchedProfiles = profiles.filter((profile) => !profile.isStitched);
@@ -505,7 +495,7 @@ export async function runIdentityStitching(
   }
 
   const unstitchedIds = new Set(unstitchedProfiles.map((p) => p.id));
-  const pendingRecords = RAW_SOURCE_RECORDS.filter((record) =>
+  const pendingRecords = records.filter((record) =>
     unstitchedIds.has(record.linkedProfileId),
   );
 
@@ -546,15 +536,12 @@ export async function runIdentityStitching(
     const matchedRecords = pendingRecords.filter(
       (record) => record.linkedProfileId === profile.id,
     );
-    const mergedSources =
-      profile.mergedSources.length > 0 ? profile.mergedSources : matchedRecords;
+    const mergedSources = matchedRecords;
 
     const remoteEntry = remoteByProfile.get(profile.id);
-    let attributes: ExtractedAttribute[] =
-      profile.attributes.length > 0 ? profile.attributes : [];
+    let extracted: ExtractedAttribute[] = [];
 
     if (
-      attributes.length === 0 &&
       remoteEntry?.attributes &&
       remoteEntry.attributes.length > 0
     ) {
@@ -572,7 +559,7 @@ export async function runIdentityStitching(
         }
         const confidence = clamp(Math.round(attr.confidence ?? 75), 50, 99);
         validRemote.push({
-          id: attr.id || `attr_${profile.id}_ai_${i + 1}`,
+          id: `attr_${profile.id}_ai_${sourceRecord.id}_${i + 1}`,
           category: normalizeCategory(attr.category),
           value: stripEmojis(attr.value),
           confidence,
@@ -581,14 +568,20 @@ export async function runIdentityStitching(
           status: confidence >= 80 ? 'verified' : 'needs_review',
         });
       }
-      attributes = validRemote;
+      extracted = validRemote;
     }
 
-    if (attributes.length === 0) {
-      attributes = extractLocalAttributesForProfile(profile.id, mergedSources);
+    if (extracted.length === 0) {
+      extracted = extractLocalAttributesForProfile(profile.id, [...mergedSources].reverse());
     }
 
-    for (const attr of attributes) {
+    const attributes = [...profile.attributes];
+    const known = new Set(attributes.map(({ category, value }) => `${category}:${value}`));
+    for (const attr of extracted) {
+      const key = `${attr.category}:${attr.value}`;
+      if (known.has(key)) continue;
+      known.add(key);
+      attributes.push(attr);
       totalAttributesExtracted += 1;
       if (attr.status === 'verified') {
         totalVerified += 1;
@@ -632,12 +625,16 @@ export async function runIdentityStitching(
   };
 }
 
-function tokenizePrompt(prompt: string): string[] {
+// Invitation filler that appears in nearly every prompt and says nothing about the activity.
+const GENERIC_PROMPT_WORDS = /หาตี้|ไปด้วย|เพื่อน|อยาก|เรื่อง|ชวน|ใคร|ว่าง|ใหม่|ตี้|กัน|ไหม|ไป|มา|วัน/g;
+
+export function tokenizePrompt(prompt: string): string[] {
   const cleaned = prompt
     .toLowerCase()
+    .replace(GENERIC_PROMPT_WORDS, ' ')
     .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
     .trim();
-  const words = cleaned.split(/\s+/).filter((token) => token.length >= 2);
+  const words = cleaned.split(/\s+/).filter((token) => token.length >= 3);
   const bigrams: string[] = [];
   for (const word of words) {
     if (word.length >= 4) {
@@ -656,18 +653,11 @@ function buildPersonalizedInvite(
   tier: 'direct' | 'lookalike',
 ): string {
   const topic = campaignPrompt.trim() || 'ตี้เพื่อนภาคคอมฯ รอบนี้';
-  const hasTightBudget = profile.attributes.some(
-    (attr) =>
-      attr.category === 'budget' &&
-      (attr.value.includes('ช็อต') || attr.value.includes('ประหยัด')),
-  );
-
   if (tier === 'direct') {
-    const budgetNote = hasTightBudget ? ' (แชร์งบสบายๆ ไม่เกิน 300)' : '';
-    return `ทักนะ ${profile.nickname}! กำลังชวน${topic}${budgetNote} เห็นชอบ${matchedTrait}อยู่พอดี สนใจไปด้วยกันไหม`;
+    return `${profile.nickname} เรามีกิจกรรม “${topic}” เห็นว่าน่าจะตรงกับความสนใจเรื่อง${matchedTrait} สนใจไปด้วยกันไหม?`;
   }
 
-  return `เฮ้ ${profile.nickname} รอบนี้มีแพลน${topic} คิดว่าน่าจะเข้ากับสาย${matchedTrait}อย่างเรา ลองดูรายละเอียดไหม`;
+  return `${profile.nickname} สนใจกิจกรรม “${topic}” ไหม? ถ้าสนใจเดี๋ยวส่งรายละเอียดให้นะ`;
 }
 
 function scoreProfileLocally(
@@ -681,7 +671,6 @@ function scoreProfileLocally(
   );
   const profileCorpus = [
     ...activeAttributes.map((a) => `${a.value} ${a.evidenceQuote}`),
-    ...profile.mergedSources.map((s) => s.rawText),
   ]
     .join(' ')
     .toLowerCase();
@@ -728,9 +717,7 @@ function scoreProfileLocally(
     directHits > 0 || (activeClusters.length === 0 && customTokenHits >= 2);
   const isLookalike =
     !isDirect &&
-    (lookalikeHits > 0 ||
-      customTokenHits >= 1 ||
-      (acceptedHistoryCount > 0 && activeAttributes.length > 0));
+    (lookalikeHits > 0 || (activeClusters.length === 0 && customTokenHits >= 1));
 
   if (!isDirect && !isLookalike) {
     return null;
@@ -746,7 +733,11 @@ function scoreProfileLocally(
       verifiedBonus +
       Math.min(2, acceptedHistoryCount);
     const matchScore = clamp(rawScore, 82, 98);
-    const topAttr = activeAttributes[0]?.value ?? matchedCustomTokens[0] ?? 'กิจกรรมกลุ่ม';
+    const topAttr = activeAttributes.find((attribute) =>
+      activeClusters.some((cluster) => cluster.directKeywords.some((keyword) =>
+        `${attribute.value} ${attribute.evidenceQuote}`.toLowerCase().includes(keyword.toLowerCase()),
+      )),
+    )?.value ?? matchedCustomTokens[0] ?? 'กิจกรรมกลุ่ม';
     const reasonText =
       directReasons.length > 0
         ? `ตรงกลุ่มเป้าหมาย: ${directReasons.slice(0, 2).join(' และ ')}`
@@ -772,8 +763,8 @@ function scoreProfileLocally(
   const topAttr = activeAttributes[0]?.value ?? 'กิจกรรมแก๊งเพื่อน';
   const reasonText =
     lookalikeReasons.length > 0
-      ? `กลุ่ม Lookalike: ${lookalikeReasons[0]} จากโปรไฟล์ "${topAttr}"`
-      : `กลุ่ม Lookalike: มีความเชื่อมโยงเชิงพฤติกรรม (${topAttr}) และเคยร่วมกิจกรรม`;
+      ? `ความสนใจใกล้เคียง: ${lookalikeReasons[0]}`
+      : `พบคำที่เกี่ยวข้อง “${matchedCustomTokens.join(', ')}” ในโปรไฟล์`;
 
   return {
     profileId: profile.id,
@@ -785,6 +776,73 @@ function scoreProfileLocally(
     ),
     selected: false,
   };
+}
+
+const MATCH_TIERS = new Set<string>(['direct', 'lookalike']);
+
+/**
+ * Validates a model answer for the `segment` action. Returns the matches for a well-formed
+ * answer (an empty array is valid and means nobody fits), or `null` when the answer is missing
+ * or malformed so the caller can fall back to the local rules. Anyone outside the consented,
+ * combined audience makes the whole answer untrustworthy.
+ */
+export function parseSegmentMatches(
+  data: unknown,
+  eligibleProfiles: ReadonlyMap<string, UnifiedProfile>,
+  campaignPrompt: string,
+): CampaignMatch[] | null {
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
+  const items = (data as { matches?: unknown }).matches;
+  if (!Array.isArray(items)) {
+    return null;
+  }
+
+  const validated: CampaignMatch[] = [];
+  const seen = new Set<string>();
+  for (const raw of items) {
+    if (!raw || typeof raw !== 'object') {
+      return null;
+    }
+    const item = raw as Record<string, unknown>;
+    const { profileId, tier, matchScore, aiReasoning, personalizedInvite, selected } = item;
+    if (typeof profileId !== 'string' || !eligibleProfiles.has(profileId)) {
+      return null;
+    }
+    if (typeof tier !== 'string' || !MATCH_TIERS.has(tier)) {
+      return null;
+    }
+    if (
+      (matchScore !== undefined && (typeof matchScore !== 'number' || !Number.isFinite(matchScore))) ||
+      (aiReasoning !== undefined && typeof aiReasoning !== 'string') ||
+      (personalizedInvite !== undefined && typeof personalizedInvite !== 'string') ||
+      (selected !== undefined && typeof selected !== 'boolean')
+    ) {
+      return null;
+    }
+    if (seen.has(profileId)) {
+      continue;
+    }
+    seen.add(profileId);
+
+    const matchTier = tier as CampaignMatch['tier'];
+    validated.push({
+      profileId,
+      tier: matchTier,
+      matchScore:
+        matchTier === 'direct'
+          ? clamp(Math.round(matchScore ?? 88), 82, 98)
+          : clamp(Math.round(matchScore ?? 74), 65, 81),
+      aiReasoning: stripEmojis(aiReasoning?.trim() || 'ตรงกับบริบทของแคมเปญ'),
+      personalizedInvite: stripEmojis(
+        personalizedInvite?.trim() ||
+          `ทักนะ ${eligibleProfiles.get(profileId)?.nickname ?? ''} ชวนร่วม ${campaignPrompt}`,
+      ),
+      selected: selected ?? matchTier === 'direct',
+    });
+  }
+  return validated;
 }
 
 export async function segmentCampaign(
@@ -815,6 +873,7 @@ export async function segmentCampaign(
         ),
       ],
       usedFallback: true,
+      source: 'local',
     };
   }
 
@@ -836,35 +895,11 @@ export async function segmentCampaign(
   let matches: CampaignMatch[] = [];
   let usedFallback = true;
 
-  if (remotePayload?.matches && remotePayload.matches.length > 0) {
-    const validated: CampaignMatch[] = [];
-    for (const item of remotePayload.matches) {
-      if (!item.profileId || !eligibleMap.has(item.profileId)) {
-        continue;
-      }
-      const tier = item.tier === 'lookalike' ? 'lookalike' : 'direct';
-      const matchScore =
-        tier === 'direct'
-          ? clamp(Math.round(item.matchScore ?? 88), 82, 98)
-          : clamp(Math.round(item.matchScore ?? 74), 65, 81);
-      validated.push({
-        profileId: item.profileId,
-        tier,
-        matchScore,
-        aiReasoning: stripEmojis(item.aiReasoning || 'ตรงกับบริบทของแคมเปญ'),
-        personalizedInvite: stripEmojis(
-          item.personalizedInvite ||
-            `ทักนะ ${eligibleMap.get(item.profileId)?.nickname ?? ''} ชวนร่วม ${normalizedPrompt}`,
-        ),
-        selected:
-          typeof item.selected === 'boolean' ? item.selected : tier === 'direct',
-      });
-    }
-
-    if (validated.length > 0) {
-      matches = validated;
-      usedFallback = false;
-    }
+  const parsedRemote = parseSegmentMatches(remotePayload, eligibleMap, normalizedPrompt);
+  if (parsedRemote) {
+    // A well-formed answer is authoritative, including an empty list: nobody fits this activity.
+    matches = parsedRemote;
+    usedFallback = false;
   }
 
   const promptLower = normalizedPrompt.toLowerCase();
@@ -887,25 +922,6 @@ export async function segmentCampaign(
       }
     }
 
-    // Ensure any arbitrary custom prompt still yields lookalike candidates when eligible profiles exist
-    if (localMatches.length === 0) {
-      for (const profile of eligibleProfiles.slice(0, 4)) {
-        const topAttr = profile.attributes[0]?.value ?? 'เพื่อนภาคคอมฯ';
-        localMatches.push({
-          profileId: profile.id,
-          tier: 'lookalike',
-          matchScore: 70,
-          aiReasoning: `กลุ่ม Lookalike: คัดกรองจากโปรไฟล์ที่มีความสนใจหลากหลาย (${topAttr})`,
-          personalizedInvite: buildPersonalizedInvite(
-            profile,
-            normalizedPrompt,
-            topAttr,
-            'lookalike',
-          ),
-          selected: false,
-        });
-      }
-    }
 
     matches = localMatches;
   }
@@ -938,6 +954,7 @@ export async function segmentCampaign(
     matches,
     logs,
     usedFallback,
+    source: usedFallback ? 'local' : 'model',
   };
 }
 
@@ -1022,6 +1039,7 @@ function upsertBehavioralAttribute(
 }
 
 export async function simulateCampaignResponses(
+  campaignId: string,
   campaignName: string,
   selectedMatches: CampaignMatch[],
   profiles: UnifiedProfile[],
@@ -1077,13 +1095,9 @@ export async function simulateCampaignResponses(
   }
 
   const usedFallback = remoteRepliesMap.size === 0;
-  const campaignId = `camp_${Date.now()}`;
   const nowIso = new Date().toISOString();
   const interactions: SimulatedReplyEntry[] = [];
-  const updatesByProfile = new Map<
-    string,
-    { interaction: CampaignInteraction; feedbackAttribute: ExtractedAttribute }
-  >();
+  const updatesByProfile = new Map<string, SimulatedReplyEntry>();
 
   for (let i = 0; i < targets.length; i += 1) {
     const match = targets[i];
@@ -1093,6 +1107,15 @@ export async function simulateCampaignResponses(
     }
 
     const remoteReply = remoteRepliesMap.get(match.profileId);
+    if (remoteReply?.status === 'pending' || (!remoteReply && i % 5 === 2)) {
+      const entry: SimulatedReplyEntry = {
+        profileId: profile.id,
+        interaction: { campaignId, campaignName, status: 'pending', sentMessage: match.personalizedInvite, timestamp: nowIso },
+      };
+      interactions.push(entry);
+      updatesByProfile.set(profile.id, entry);
+      continue;
+    }
     const localReply = simulateLocalReplyForMatch(
       match,
       profile,
@@ -1150,7 +1173,7 @@ export async function simulateCampaignResponses(
       interaction,
       feedbackAttribute,
     });
-    updatesByProfile.set(profile.id, { interaction, feedbackAttribute });
+    updatesByProfile.set(profile.id, { profileId: profile.id, interaction, feedbackAttribute });
   }
 
   const updatedProfiles = profiles.map((profile) => {
@@ -1161,18 +1184,18 @@ export async function simulateCampaignResponses(
 
     return {
       ...profile,
-      campaignHistory: [update.interaction, ...profile.campaignHistory],
-      attributes: upsertBehavioralAttribute(
-        profile.attributes,
-        update.feedbackAttribute,
-      ),
+      campaignHistory: [update.interaction, ...profile.campaignHistory.filter((item) => item.campaignId !== campaignId)],
+      attributes: update.feedbackAttribute
+        ? upsertBehavioralAttribute(profile.attributes, update.feedbackAttribute)
+        : profile.attributes,
     };
   });
 
   const acceptedCount = interactions.filter(
     (entry) => entry.interaction.status === 'accepted',
   ).length;
-  const declinedCount = interactions.length - acceptedCount;
+  const declinedCount = interactions.filter((entry) => entry.interaction.status === 'declined').length;
+  const pendingCount = interactions.length - acceptedCount - declinedCount;
   const elapsedMs = performance.now() - startedAt;
 
   const logs: PipelineLog[] = [
@@ -1183,12 +1206,12 @@ export async function simulateCampaignResponses(
     ),
     createLog(
       'Response Simulation',
-      `Captured ${acceptedCount} accepted and ${declinedCount} declined Thai chat responses.`,
+      `Captured ${acceptedCount} accepted, ${declinedCount} declined and ${pendingCount} awaiting reply.`,
       elapsedMs * 0.4,
     ),
     createLog(
       'Closed-Loop Feedback',
-      `Persisted ${interactions.length} behavioral attributes back to UnifiedProfile records for future segmentation.`,
+      `Saved ${acceptedCount + declinedCount} reply signals to profiles for future segmentation.`,
       elapsedMs * 0.3,
     ),
   ];

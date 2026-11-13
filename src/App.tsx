@@ -1,434 +1,260 @@
-import { MotionConfig } from 'framer-motion';
-import { useCallback, useState } from 'react';
+import { MotionConfig, motion } from 'motion/react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnalyticsLoopTab } from './components/AnalyticsLoopTab.tsx';
 import { CampaignSegmentTab } from './components/CampaignSegmentTab.tsx';
 import { CollectUnifyTab } from './components/CollectUnifyTab.tsx';
-import { LoginGate } from './components/LoginGate.tsx';
+import { LandingPage } from './components/LandingPage.tsx';
 import { ProfileInspectorDrawer } from './components/ProfileInspectorDrawer.tsx';
 import { type ToastItem, ToastRegion } from './components/ToastRegion.tsx';
+import { DemoAccountBanner } from './components/DemoAccountBanner.tsx';
 import { TopNavbar } from './components/TopNavbar.tsx';
 import { UnifiedProfilesTab } from './components/UnifiedProfilesTab.tsx';
 import { XRayDrawer } from './components/XRayDrawer.tsx';
-import {
-  CAMPAIGN_PRESETS,
-  INITIAL_PROFILES,
-  RAW_SOURCE_RECORDS,
-} from './data/seedData.ts';
-import {
-  runIdentityStitching,
-  segmentCampaign,
-  simulateCampaignResponses,
-} from './services/aiEngine.ts';
-import type {
-  CampaignMatch,
-  CampaignRecord,
-  PipelineLog,
-  UnifiedProfile,
-  WorkflowTabId,
-} from './types/cdp.ts';
-import { countNeedsReviewAttributes } from './utils/cdpHelpers.ts';
+import { CAMPAIGN_PRESETS, INITIAL_PROFILES, RAW_SOURCE_RECORDS } from './data/seedData.ts';
+import { runIdentityStitching, segmentCampaign, simulateCampaignResponses } from './services/aiEngine.ts';
+import type { CampaignMatch, CampaignRecord, DataSourceType, PipelineLog, RawSourceRecord, UnifiedProfile, WorkflowTabId } from './types/cdp.ts';
+import { buildReplySummaries, createCampaign, recordSentInvitations } from './utils/campaignFlow.ts';
+import { getEffectiveAttributeStatus } from './utils/cdpHelpers.ts';
+import './App.css';
 
-function cloneInitialProfiles(): UnifiedProfile[] {
-  return INITIAL_PROFILES.map((profile) => ({
-    ...profile,
-    attributes: profile.attributes.map((attr) => ({ ...attr })),
-    mergedSources: profile.mergedSources.map((src) => ({ ...src })),
-    campaignHistory: profile.campaignHistory.map((item) => ({ ...item })),
-  }));
+const storageKey = 'gather-demo-v1';
+
+interface DemoData {
+  records: RawSourceRecord[];
+  profiles: UnifiedProfile[];
+  campaigns: CampaignRecord[];
+  logs: PipelineLog[];
+  approved: string[];
+  threshold: number;
 }
 
-let toastCounter = 0;
+function initialDemo(): DemoData {
+  return { profiles: INITIAL_PROFILES, records: RAW_SOURCE_RECORDS, campaigns: [], logs: [], approved: [], threshold: 75 };
+}
+
+function loadDemo(): DemoData {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null') as DemoData | null;
+    if (saved && Array.isArray(saved.profiles) && Array.isArray(saved.records) &&
+      Array.isArray(saved.campaigns) && Array.isArray(saved.logs) && Array.isArray(saved.approved) &&
+      Number.isFinite(saved.threshold)) return saved;
+  } catch {
+    // The demo remains usable if storage is blocked or its contents are invalid.
+  }
+  return initialDemo();
+}
 
 export function App() {
+  const [demo, setDemo] = useState(loadDemo);
+  const { profiles, records, campaigns, logs, threshold, approved } = demo;
+  const manuallyApprovedIds = new Set(approved);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [activeTab, setActiveTab] = useState<WorkflowTabId>('collect');
-  const [profiles, setProfiles] = useState<UnifiedProfile[]>(() =>
-    cloneInitialProfiles(),
-  );
-  const [confidenceThreshold, setConfidenceThreshold] = useState(75);
-  const [manuallyApprovedIds, setManuallyApprovedIds] = useState<Set<string>>(
-    () => new Set(),
-  );
-
+  const [activeTab, setActiveTab] = useState<WorkflowTabId>('profiles');
   const [campaignPrompt, setCampaignPrompt] = useState(CAMPAIGN_PRESETS[0]);
-  const [segmentMatches, setSegmentMatches] = useState<CampaignMatch[]>([]);
-  const [campaigns, setCampaigns] = useState<CampaignRecord[]>([]);
+  const [matches, setMatches] = useState<CampaignMatch[]>([]);
+  const [didSegment, setDidSegment] = useState(false);
+  const [segmentSource, setSegmentSource] = useState<'model' | 'local' | null>(null);
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
-
-  const [pipelineLogs, setPipelineLogs] = useState<PipelineLog[]>([]);
-  const [inspectedProfileId, setInspectedProfileId] = useState<string | null>(
-    null,
-  );
+  const [inspectedProfileId, setInspectedProfileId] = useState<string | null>(null);
   const [isXRayOpen, setIsXRayOpen] = useState(false);
-
-  const [isStitching, setIsStitching] = useState(false);
-  const [stitchStage, setStitchStage] = useState<0 | 1 | 2 | 3>(0);
-  const [isSegmenting, setIsSegmenting] = useState(false);
-  const [isSimulating, setIsSimulating] = useState(false);
+  const [operation, setOperation] = useState<'stitch' | 'segment' | 'simulate' | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const mainRef = useRef<HTMLElement>(null);
+  const entered = useRef(false);
+  const busy = operation !== null;
 
-  const pushToast = useCallback(
-    (tone: ToastItem['tone'], title: string, detail?: string) => {
-      toastCounter += 1;
-      const id = `toast_${Date.now()}_${toastCounter}`;
-      setToasts((prev) => [...prev.slice(-1), { id, tone, title, detail }]);
-    },
-    [],
-  );
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify(demo));
+    } catch {
+      // The in-memory workspace remains available if session storage is full.
+    }
+  }, [demo]);
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      entered.current = true;
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      mainRef.current?.focus({ preventScroll: true });
+    } else if (entered.current) {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      document.getElementById('landing-main')?.focus({ preventScroll: true });
+    }
+  }, [isLoggedIn, activeTab]);
+
+  function notify(tone: ToastItem['tone'], title: string, detail?: string) {
+    setToasts((items) => [...items.slice(-2), { id: crypto.randomUUID(), tone, title, detail }]);
+  }
 
   const dismissToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+    setToasts((items) => items.filter((item) => item.id !== id));
   }, []);
 
-  const appendLogs = useCallback((logs: PipelineLog[]) => {
-    setPipelineLogs((prev) => [...logs, ...prev].slice(0, 60));
-  }, []);
+  function clearMatches() {
+    setMatches([]);
+    setDidSegment(false);
+    setSegmentSource(null);
+  }
 
-  const handleLogin = (openXRay: boolean, initialTab?: WorkflowTabId) => {
-    setIsLoggedIn(true);
-    setIsXRayOpen(openXRay);
-    if (initialTab) {
-      setActiveTab(initialTab);
-    }
-    pushToast(
-      'info',
-      openXRay
-        ? 'Entered AI Lead X-Ray Workspace'
-        : 'Entered Mini CDP Customer Studio',
-      'Loaded 15 profiles, 45 multi-source signals, and live governance controls.',
-    );
-  };
-
-  const handleResetDemo = () => {
-    setProfiles(cloneInitialProfiles());
-    setConfidenceThreshold(75);
-    setManuallyApprovedIds(new Set());
+  function resetDemo() {
+    if (busy || !window.confirm('เริ่มเดโมใหม่และล้างข้อมูลที่คุณเพิ่มกับผลแคมเปญในแท็บนี้?')) return;
+    setDemo(initialDemo());
     setCampaignPrompt(CAMPAIGN_PRESETS[0]);
-    setSegmentMatches([]);
-    setCampaigns([]);
+    clearMatches();
     setActiveCampaignId(null);
-    setPipelineLogs([]);
-    setInspectedProfileId(null);
-    setStitchStage(0);
-    setActiveTab('collect');
-    pushToast(
-      'info',
-      'Demo Workspace Reset',
-      'Restored 5 pre-stitched profiles and 30 pending queue records.',
-    );
-  };
+    setActiveTab('profiles');
+    notify('info', 'เริ่มเดโมใหม่แล้ว');
+  }
 
-  const handleRunStitching = async () => {
-    setIsStitching(true);
-    setStitchStage(1);
-    await new Promise((r) => setTimeout(r, 220));
-    setStitchStage(2);
-    const result = await runIdentityStitching(profiles);
-    setStitchStage(3);
-    await new Promise((r) => setTimeout(r, 220));
-
-    setProfiles(result.profiles);
-    appendLogs(result.logs);
-    setIsStitching(false);
-    setStitchStage(0);
-
-    pushToast(
-      'success',
-      `Unified ${result.stitchedCount} Profiles`,
-      `Resolved all remaining raw records across LINE, Facebook, and Dept Roster.`,
-    );
-  };
-
-  const handleToggleMerge = (profileId: string) => {
-    let wasStitched = false;
-    setProfiles((prev) =>
-      prev.map((profile) => {
-        if (profile.id !== profileId) {
-          return profile;
-        }
-        wasStitched = profile.isStitched;
-        const mergedSources = profile.isStitched
-          ? []
-          : RAW_SOURCE_RECORDS.filter((r) => r.linkedProfileId === profile.id);
-        return {
-          ...profile,
-          isStitched: !profile.isStitched,
-          mergedSources,
-        };
-      }),
-    );
-
-    pushToast(
-      wasStitched ? 'warning' : 'success',
-      wasStitched ? 'Profile Unmerged' : 'Profile Re-merged',
-      wasStitched
-        ? 'Returned 3 raw records back to the ingestion queue.'
-        : 'Restored linked LINE, Facebook, and Roster sources.',
-    );
-  };
-
-  const handleAttributeDecision = (
-    profileId: string,
-    attributeId: string,
-    decision: 'verified' | 'rejected',
-  ) => {
-    setProfiles((prev) =>
-      prev.map((profile) => {
-        if (profile.id !== profileId) {
-          return profile;
-        }
-        return {
-          ...profile,
-          attributes: profile.attributes.map((attr) =>
-            attr.id === attributeId ? { ...attr, status: decision } : attr,
-          ),
-        };
-      }),
-    );
-
-    setManuallyApprovedIds((prev) => {
-      const next = new Set(prev);
-      if (decision === 'verified') {
-        next.add(attributeId);
-      } else {
-        next.delete(attributeId);
-      }
-      return next;
-    });
-
-    pushToast(
-      decision === 'verified' ? 'success' : 'warning',
-      decision === 'verified' ? 'Attribute Verified' : 'Attribute Rejected',
-    );
-  };
-
-  const handleRunSegment = async (prompt: string) => {
-    setIsSegmenting(true);
-    const result = await segmentCampaign(prompt, profiles);
-    setSegmentMatches(result.matches);
-    appendLogs(result.logs);
-    setIsSegmenting(false);
-
-    const directCount = result.matches.filter(
-      (m) => m.tier === 'direct',
-    ).length;
-    const lookalikeCount = result.matches.length - directCount;
-    pushToast(
-      'success',
-      'Semantic Segmentation Ready',
-      `Found ${directCount} direct matches and ${lookalikeCount} lookalike candidates.`,
-    );
-  };
-
-  const handleLaunchCampaign = (
-    campaignName: string,
-    matches: CampaignMatch[],
-  ) => {
-    const selected = matches.filter((m) => m.selected);
-    if (selected.length === 0) {
-      return;
-    }
-
-    const newCampaign: CampaignRecord = {
-      id: `camp_${Date.now()}`,
-      name: campaignName,
-      createdAt: new Date().toISOString(),
-      matches: matches.map((m) => ({ ...m })),
-      simulated: false,
-      closedLoopUpdatesCount: 0,
-      replies: [],
+  function addSignal(profileId: string, source: DataSourceType, text: string) {
+    const profile = profiles.find((item) => item.id === profileId);
+    if (busy || !profile || !text.trim() || text.length > 800) return;
+    const record: RawSourceRecord = {
+      id: crypto.randomUUID(), source, rawText: text, linkedProfileId: profile.id,
+      handle: profile.nickname, timestamp: new Date().toISOString(),
     };
+    setDemo((current) => ({
+      ...current,
+      records: [...current.records, record],
+      profiles: current.profiles.map((item) => item.id === profileId ? { ...item, isStitched: false } : item),
+    }));
+    clearMatches();
+    notify('info', 'เพิ่มข้อความเข้าคิวแล้ว', 'กดรวมและสกัดข้อมูลเพื่อตรวจว่าพบความสนใจอะไร');
+  }
 
-    setCampaigns((prev) => [newCampaign, ...prev]);
-    setActiveCampaignId(newCampaign.id);
-    setActiveTab('analytics');
-    appendLogs([
-      {
-        id: `log_launch_${Date.now()}`,
-        timestamp: new Date().toISOString(),
-        step: 'Campaign Launched',
-        detail: `Queued ${selected.length} personalized Thai LINE invitations for "${campaignName}".`,
-        latencyMs: 14,
-      },
-    ]);
-
-    pushToast(
-      'success',
-      `Launched "${campaignName}"`,
-      `Sent to ${selected.length} consented recipients. Click Simulate Friend Replies next.`,
-    );
-  };
-
-  const handleSimulateReplies = async (campaignId: string) => {
-    const targetCampaign = campaigns.find((c) => c.id === campaignId);
-    if (!targetCampaign) {
-      return;
+  async function stitch() {
+    if (busy) return;
+    setOperation('stitch');
+    try {
+      const result = await runIdentityStitching(profiles, records);
+      setDemo((current) => ({ ...current, profiles: result.profiles, logs: [...result.logs, ...current.logs].slice(0, 60) }));
+      clearMatches();
+      notify('success', `รวมข้อมูลแล้ว ${result.stitchedCount} โปรไฟล์`, result.usedFallback ? 'สกัดด้วยกฎจากข้อความตัวอย่าง' : 'ตรวจข้อความอ้างอิงจากผลวิเคราะห์ AI แล้ว');
+    } catch {
+      notify('warning', 'รวมข้อมูลไม่สำเร็จ', 'ข้อมูลยังอยู่ในคิว ลองกดประมวลผลอีกครั้ง');
+    } finally {
+      setOperation(null);
     }
+  }
 
-    setIsSimulating(true);
-    const result = await simulateCampaignResponses(
-      targetCampaign.name,
-      targetCampaign.matches,
-      profiles,
-    );
+  function decideAttribute(profileId: string, attributeId: string, decision: 'verified' | 'rejected') {
+    if (busy) return;
+    setDemo((current) => ({
+      ...current,
+      approved: decision === 'verified' ? [...new Set([...current.approved, attributeId])] : current.approved.filter((id) => id !== attributeId),
+      profiles: current.profiles.map((profile) => profile.id === profileId ? {
+        ...profile, attributes: profile.attributes.map((attribute) => attribute.id === attributeId ? { ...attribute, status: decision } : attribute),
+      } : profile),
+    }));
+    clearMatches();
+  }
 
-    const matchTierByProfile = new Map(
-      targetCampaign.matches.map((m) => [m.profileId, m.tier]),
-    );
+  async function recommend(prompt: string) {
+    if (busy) return;
+    clearMatches();
+    setOperation('segment');
+    try {
+      const reviewedProfiles = profiles.map((profile) => ({
+        ...profile,
+        attributes: profile.attributes.filter((attribute) =>
+          getEffectiveAttributeStatus(attribute, threshold, manuallyApprovedIds) === 'verified'),
+      }));
+      const result = await segmentCampaign(prompt, reviewedProfiles);
+      setDemo((current) => ({ ...current, logs: [...result.logs, ...current.logs].slice(0, 60) }));
+      setMatches(result.matches);
+      setDidSegment(true);
+      setSegmentSource(result.source);
+    } catch {
+      notify('warning', 'ค้นหาผู้รับไม่สำเร็จ', 'ลองกดแนะนำผู้รับคำเชิญอีกครั้ง');
+    } finally {
+      setOperation(null);
+    }
+  }
 
-    setProfiles(result.profiles);
-    appendLogs(result.logs);
+  function launch(name: string, candidates: CampaignMatch[]) {
+    if (busy) return;
+    const campaign = createCampaign(crypto.randomUUID(), name, new Date().toISOString(), candidates, profiles);
+    if (!campaign) return;
+    setDemo((current) => ({
+      ...current,
+      campaigns: [campaign, ...current.campaigns],
+      profiles: recordSentInvitations(current.profiles, campaign),
+    }));
+    setActiveCampaignId(campaign.id);
+    setActiveTab('analytics');
+    clearMatches();
+    notify('success', `ส่งคำเชิญจำลองแล้ว ${campaign.matches.length} คน`, 'กดจำลองคำตอบเพื่อดูผลตอบกลับ');
+  }
 
-    setCampaigns((prev) =>
-      prev.map((camp) => {
-        if (camp.id !== campaignId) {
-          return camp;
-        }
-        return {
-          ...camp,
-          simulated: true,
-          closedLoopUpdatesCount: result.interactions.length,
-          replies: result.interactions.map((entry) => ({
-            profileId: entry.profileId,
-            status: entry.interaction.status,
-            replyText: entry.interaction.replyText ?? '',
-            tier: matchTierByProfile.get(entry.profileId) ?? 'direct',
-            feedbackTag: entry.feedbackAttribute.value,
-            feedbackCategory: entry.feedbackAttribute.category,
-          })),
-        };
-      }),
-    );
+  async function simulate(id: string) {
+    const target = campaigns.find((campaign) => campaign.id === id);
+    if (busy || !target || target.simulated) return;
+    setOperation('simulate');
+    try {
+      const result = await simulateCampaignResponses(id, target.name, target.matches, profiles);
+      const replies = buildReplySummaries(target, result.interactions);
+      setDemo((current) => ({
+        ...current,
+        profiles: result.profiles,
+        logs: [...result.logs, ...current.logs].slice(0, 60),
+        campaigns: current.campaigns.map((campaign) => campaign.id === id ? {
+          ...campaign, simulated: true, replies,
+          closedLoopUpdatesCount: replies.filter((reply) => reply.status !== 'pending').length,
+        } : campaign),
+      }));
+      clearMatches();
+    } catch {
+      notify('warning', 'จำลองคำตอบไม่สำเร็จ', 'สถานะคำเชิญเดิมยังอยู่ ลองอีกครั้งได้');
+    } finally {
+      setOperation(null);
+    }
+  }
 
-    setIsSimulating(false);
-    pushToast(
-      'success',
-      'Closed-Loop CDP Sync Complete',
-      `Updated ${result.interactions.length} profiles with real campaign feedback tags.`,
-    );
-  };
-
-  const unstitchedIds = new Set(
-    profiles.filter((p) => !p.isStitched).map((p) => p.id),
-  );
-  const unmergedCount = RAW_SOURCE_RECORDS.filter((r) =>
-    unstitchedIds.has(r.linkedProfileId),
-  ).length;
-  const stitchedCount = profiles.filter((p) => p.isStitched).length;
-  const needsReviewCount = countNeedsReviewAttributes(
-    profiles,
-    confidenceThreshold,
-    manuallyApprovedIds,
-  );
-  const inspectedProfile =
-    profiles.find((p) => p.id === inspectedProfileId) ?? null;
+  const inspectedProfile = profiles.find((profile) => profile.id === inspectedProfileId) ?? null;
+  const goToCampaign = () => setActiveTab('segment');
+  const goToSources = () => setActiveTab('collect');
 
   return (
     <MotionConfig reducedMotion="user">
-      {!isLoggedIn ? (
-        <LoginGate onLogin={handleLogin} />
-      ) : (
-        <div className="min-h-dvh overflow-x-hidden bg-canvas text-ink-primary">
-          <a
-            href="#main-content"
-            className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-brand-slate focus:px-3 focus:py-2 focus:text-xs focus:font-semibold focus:text-white focus:ring-2 focus:ring-amber-500/50 focus:outline-none"
-          >
-            Skip to main content
-          </a>
-          <TopNavbar
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            unmergedCount={unmergedCount}
-            stitchedCount={stitchedCount}
-            totalProfiles={profiles.length}
-            campaignCount={campaigns.length}
-            needsReviewCount={needsReviewCount}
-            confidenceThreshold={confidenceThreshold}
-            onThresholdChange={setConfidenceThreshold}
-            isXRayOpen={isXRayOpen}
-            onToggleXRay={() => setIsXRayOpen((prev) => !prev)}
-            onResetDemo={handleResetDemo}
-            onReturnToLanding={() => setIsLoggedIn(false)}
-          />
-
-          <main
-            id="main-content"
-            className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8"
-          >
-            {activeTab === 'collect' ? (
-              <CollectUnifyTab
-                profiles={profiles}
-                confidenceThreshold={confidenceThreshold}
-                manuallyApprovedIds={manuallyApprovedIds}
-                isStitching={isStitching}
-                stitchStage={stitchStage}
-                onRunStitching={handleRunStitching}
-                onToggleMerge={handleToggleMerge}
-                onAttributeDecision={handleAttributeDecision}
-                onInspectProfile={setInspectedProfileId}
-              />
-            ) : null}
-
-            {activeTab === 'profiles' ? (
-              <UnifiedProfilesTab
-                profiles={profiles}
-                confidenceThreshold={confidenceThreshold}
-                manuallyApprovedIds={manuallyApprovedIds}
-                onSelectProfile={setInspectedProfileId}
-              />
-            ) : null}
-
-            {activeTab === 'segment' ? (
-              <CampaignSegmentTab
-                profiles={profiles}
-                campaignPrompt={campaignPrompt}
-                onPromptChange={setCampaignPrompt}
-                matches={segmentMatches}
-                onMatchesChange={setSegmentMatches}
-                isSegmenting={isSegmenting}
-                onRunSegment={handleRunSegment}
-                onLaunchCampaign={handleLaunchCampaign}
-              />
-            ) : null}
-
-            {activeTab === 'analytics' ? (
-              <AnalyticsLoopTab
-                campaigns={campaigns}
-                activeCampaignId={activeCampaignId}
-                onSelectCampaign={setActiveCampaignId}
-                profiles={profiles}
-                isSimulating={isSimulating}
-                onSimulateReplies={handleSimulateReplies}
-                onGoToSegmentation={() => setActiveTab('segment')}
-                onInspectProfile={setInspectedProfileId}
-                onGoToProfiles={() => setActiveTab('profiles')}
-              />
-            ) : null}
+      {isLoggedIn ? (
+        <div className="workspace">
+          <a href="#main-content" className="skip-link">ข้ามไปยังเนื้อหา</a>
+          <TopNavbar activeTab={activeTab} onTabChange={setActiveTab} onToggleXRay={() => setIsXRayOpen(true)}
+            onResetDemo={resetDemo} onReturnToLanding={() => setIsLoggedIn(false)} busy={busy} />
+          <main id="main-content" ref={mainRef} tabIndex={-1} className="workspace-main">
+            <DemoAccountBanner activeTab={activeTab} friendCount={profiles.length} onTabChange={setActiveTab} />
+            <motion.div key={activeTab} className="workspace-content" initial={{ y: 5 }} animate={{ y: 0 }} transition={{ duration: 0.18 }}>
+              {activeTab === 'profiles' && <UnifiedProfilesTab profiles={profiles} confidenceThreshold={threshold} manuallyApprovedIds={manuallyApprovedIds}
+                onSelectProfile={setInspectedProfileId} onGoToSources={goToSources} onGoToCampaign={goToCampaign} />}
+              {activeTab === 'collect' && <CollectUnifyTab profiles={profiles} records={records} busy={busy} isStitching={operation === 'stitch'} confidenceThreshold={threshold}
+                onThresholdChange={(value) => {
+                  setDemo((current) => ({ ...current, threshold: value }));
+                  clearMatches();
+                }}
+                onRunStitching={stitch} onAddSignal={addSignal} onInspectProfile={setInspectedProfileId} onGoToCampaign={goToCampaign} />}
+              {activeTab === 'segment' && <CampaignSegmentTab profiles={profiles} records={records} confidenceThreshold={threshold} manuallyApprovedIds={manuallyApprovedIds}
+                segmentSource={segmentSource} onInspectProfile={setInspectedProfileId} campaignPrompt={campaignPrompt} matches={matches} busy={busy}
+                isSegmenting={operation === 'segment'} didSegment={didSegment} onPromptChange={(prompt) => { setCampaignPrompt(prompt); clearMatches(); }}
+                onMatchesChange={setMatches} onRunSegment={recommend} onLaunchCampaign={launch} onGoToSources={goToSources} />}
+              {activeTab === 'analytics' && <AnalyticsLoopTab campaigns={campaigns} activeCampaignId={activeCampaignId} profiles={profiles} busy={busy}
+                isSimulating={operation === 'simulate'} onSelectCampaign={setActiveCampaignId} onSimulateReplies={simulate}
+                onGoToSegmentation={goToCampaign} onInspectProfile={setInspectedProfileId} />}
+            </motion.div>
           </main>
-
-          <ProfileInspectorDrawer
-            profile={inspectedProfile}
-            onClose={() => setInspectedProfileId(null)}
-            confidenceThreshold={confidenceThreshold}
-            manuallyApprovedIds={manuallyApprovedIds}
-            onAttributeDecision={handleAttributeDecision}
-          />
-
-          <XRayDrawer
-            open={isXRayOpen}
-            onClose={() => setIsXRayOpen(false)}
-            profiles={profiles}
-            pipelineLogs={pipelineLogs}
-            confidenceThreshold={confidenceThreshold}
-            campaignCount={campaigns.length}
-          />
-
-          <ToastRegion
-            toasts={toasts}
-            onDismiss={dismissToast}
-            suppressed={inspectedProfile !== null || isXRayOpen}
-          />
+          <ProfileInspectorDrawer profile={inspectedProfile} records={records} onClose={() => setInspectedProfileId(null)}
+            confidenceThreshold={threshold} manuallyApprovedIds={manuallyApprovedIds} onAttributeDecision={decideAttribute} busy={busy} />
+          <XRayDrawer open={isXRayOpen} onClose={() => setIsXRayOpen(false)} pipelineLogs={logs} />
+          <ToastRegion toasts={toasts} onDismiss={dismissToast} suppressed={inspectedProfile !== null || isXRayOpen} />
         </div>
+      ) : (
+        <LandingPage onEnterWorkspace={(tab) => {
+          setActiveTab(tab);
+          if (tab === 'segment') {
+            setCampaignPrompt(CAMPAIGN_PRESETS[0]);
+            clearMatches();
+          }
+          setIsLoggedIn(true);
+        }} />
       )}
     </MotionConfig>
   );
