@@ -33,7 +33,7 @@ interface CampaignSegmentTabProps {
   runId: number;
 }
 
-const presetNames = ['หมูกระทะ', 'เดินป่า', 'เที่ยวทะเล', 'แฮงเอาท์'];
+const presetNames = ['หมูกระทะ', 'เดินป่า', 'เที่ยวทะเล', 'แฮงเอาท์', 'ตีแบด', 'ติวหนังสือ', 'คอนเสิร์ต'];
 
 export function CampaignSegmentTab({ profiles, records, confidenceThreshold, manuallyApprovedIds, segmentSource, onInspectProfile, brief, onBriefChange, campaignPrompt, onPromptChange, matches, onMatchesChange, busy, isSegmenting, didSegment, onRunSegment, onLaunchCampaign, onGoToSources, runId }: CampaignSegmentTabProps) {
   const reduced = useReducedMotion();
@@ -99,7 +99,7 @@ export function CampaignSegmentTab({ profiles, records, confidenceThreshold, man
             <textarea id="campaign-prompt" rows={3} maxLength={240} value={campaignPrompt} disabled={busy} onChange={(event) => onPromptChange(event.target.value)} placeholder="เช่น ชวนกินหมูกระทะวันศุกร์ งบไม่เกิน 300 บาท" />
             <div className="preset-list" aria-label="กิจกรรมตัวอย่าง" role="group">
               {CAMPAIGN_PRESETS.map((preset, index) => (
-                <button key={preset} type="button" className="button button-light preset" aria-pressed={campaignPrompt === preset} disabled={busy} onClick={() => onPromptChange(preset)}>{presetNames[index]}</button>
+                <button key={preset} type="button" className="button button-light preset" aria-pressed={campaignPrompt === preset} disabled={busy} onClick={() => onPromptChange(preset)}>{presetNames[index] ?? preset}</button>
               ))}
             </div>
             <BriefPanel prompt={campaignPrompt} brief={brief} disabled={busy} onBriefChange={onBriefChange} />
